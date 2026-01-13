@@ -686,76 +686,47 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
     # --- 3. CSS STYLING ---
     # <--- FIXED: Added box-sizing: border-box globally to prevent padding overflow issues --->
     CSS_STYLES = f"""
-# --- 3. CSS STYLING (CLOUD COMPATIBLE) ---
-    CSS_STYLES = f"""
         <!DOCTYPE html>
         <html><head><meta charset="UTF-8">
         <style>
-        /* 1. RESET EVERYTHING TO ZERO */
-        @page {{ size: A4; margin: 0mm; }}
+        @page {{ size: A4; margin: 0; }}
+        
+        * {{ box-sizing: border-box; }} 
+        
         html, body {{ 
-            width: 210mm;
-            height: 297mm;
             margin: 0 !important; 
             padding: 0 !important; 
-            background-color: #ffffff;
-            -webkit-print-color-adjust: exact; 
+            width: 100% !important; 
+            height: 100%; 
+            background-color: transparent !important; 
         }}
         
-        /* 2. ABSOLUTE FULL PAGE WRAPPER */
-        /* This forces the element to ignore page margins and snap to physical edges */
-        .full-page-wrapper {{
-            position: relative;
-            width: 210mm;
-            height: 297mm;
-            overflow: hidden;
-            page-break-after: always;
-            margin: 0;
-            padding: 0;
-            left: 0;
-            top: 0;
-        }}
-        
-        /* 3. IMAGE STRETCHING */
-        .full-page-img {{
-            width: 100%;
-            height: 100%;
-            object-fit: fill; /* Forces image to stretch to cover specific gaps */
-            display: block;
+        #watermark-layer {{
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -9999; 
+            background-image: url('data:image/png;base64,{watermark_b64}');
+            background-repeat: repeat; background-position: center center; background-size: cover; 
+            background-color: transparent;
         }}
 
-        /* CATALOGUE CONTENT STYLES */
-        /* CATALOGUE CONTENT STYLES */
-        .catalogue-content { padding: 10mm; display: block; position: relative; z-index: 10; }
-        .catalogue-heading {{ background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; page-break-inside: avoid; }} 
-        .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 5mm; clear: both; font-family: serif; page-break-inside: avoid; }} 
-        .case-size-info {{ color: #555; font-size: 10pt; font-style: italic; margin-bottom: 5px; clear: both; font-family: sans-serif; }}
-        .case-size-table {{ width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 9pt; margin-bottom: 10px; clear: both; background-color: rgba(255,255,255,0.9); }}
-        .case-size-table th {{ border: 1px solid #ddd; background-color: #f2f2f2; padding: 4px; text-align: center; font-weight: bold; font-size: 8pt; color: #333; }}
-        .case-size-table td {{ border: 1px solid #ddd; padding: 4px; text-align: center; color: #444; }}
-        .clearfix::after {{ content: ""; clear: both; display: table; }}
-        .category-wrapper {{ display: block; clear: both; page-break-before: always; }}
-        .no-break {{ page-break-before: avoid !important; }}
-        </style></head><body style='margin: 0; padding: 0;'>
-    """
-    
-    html_parts = []
-    html_parts.append(CSS_STYLES)
-    
-    # 1. COVER PAGE
-    html_parts.append(f"""
-    <div class="full-page-wrapper">
-        <img class="full-page-img" src="data:image/png;base64,{cover_bg_b64}">
-    </div>
-    """)
-    
-    # 2. STORY PAGE
-    if story_img_1_b64:
-        html_parts.append(f"""
-        <div class="full-page-wrapper">
-            <img class="full-page-img" src="data:image/png;base64,{story_img_1_b64}">
-        </div>
-        """)
+        /* COVER PAGE */
+        .cover-page {{ 
+            width: 210mm; 
+            height: 260mm; 
+            display: block; position: relative; margin: 0; padding: 0; overflow: hidden; 
+            page-break-after: always;
+            background-color: #ffffff; 
+            z-index: 10; 
+        }}
+
+        /* STORY PAGE */
+        .story-page {{ 
+            width: 210mm; 
+            height: 260mm; 
+            display: block; position: relative; margin: 0; overflow: hidden; 
+            background-color: transparent; 
+            page-break-after: always;
+        }}
 
         .toc-page {{ 
             width: 210mm; 
@@ -765,14 +736,10 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
             page-break-after: always;
         }}
 
-        /* CATALOGUE CONTENT STYLES */
-        .catalogue-content { 
-            padding: 10mm; 
-            display: block; 
-            position: relative; 
-            z-index: 9999; /* Force it to be on top of everything */
-            background-color: transparent; 
-        }
+        .catalogue-content {{ 
+            padding-left: 10mm; padding-right: 10mm; display: block; padding-bottom: 50px; 
+            position: relative; z-index: 1; background-color: transparent; 
+        }}
         
         .catalogue-heading {{ background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; page-break-inside: avoid; }} 
         .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 5mm; clear: both; font-family: serif; page-break-inside: avoid; }} 
@@ -1027,14 +994,19 @@ if True:
                         sel_cats_multi = st.multiselect("Category", category_options, default=st.session_state.selected_categories_multi, key="category_multiselect")
                         st.session_state.selected_categories_multi = sel_cats_multi 
                         
-                        if sel_cats_multi:
+                        if sel_cats_multi: 
                             filtered_dfs = [] 
                             st.markdown("---")
                             st.markdown("**Sub-Category Options:**")
                             for category in sel_cats_multi:
                                 cat_data = catalog_subset_df[catalog_subset_df['Category'] == category]
                                 raw_subs = sorted(cat_data['Subcategory'].unique())
-                                clean_subs = [s for s in raw_subs if s.strip().upper() != 'N/A' and s.strip().lower() != 'nan' and s.strip() != '']
+                                # CORRECTED BLOCK
+                                clean_subs = [
+                                    str(s).strip() 
+                                    for s in raw_subs 
+                                    if s is not None and str(s).strip().upper() not in ['N/A', 'NAN', '']
+                                ]
                                 
                                 if clean_subs:
                                     safe_cat_key = create_safe_id(category)
@@ -1164,8 +1136,6 @@ if True:
                         html = generate_pdf_html(df_final, name, logo, selection_map)
                         
                         options = {
-                            # --- PDF SETTINGS (CLOUD OPTIMIZED) ---
-  
                             'page-size': 'A4',
                             'margin-top': '0mm',
                             'margin-right': '0mm',
@@ -1174,13 +1144,8 @@ if True:
                             'encoding': "UTF-8",
                             'no-outline': None,
                             'enable-local-file-access': None,
-                            'disable-smart-shrinking': None,  # Keep this!
-                            'print-media-type': None,
-                            # 'zoom': 1.0,  <-- REMOVE THIS (Causes link drift)
-                            # 'dpi': 96     <-- REMOVE THIS (Causes link drift)
-
-    
-   
+                            'disable-smart-shrinking': None,  # <--- CRITICAL: Prevents Linux from shrinking the page
+                            'print-media-type': None          # <--- Ensures CSS @media print is used correctly
                         }
                         
                         st.session_state.gen_pdf_bytes = pdfkit.from_string(html, False, configuration=CONFIG, options=options)
@@ -1195,7 +1160,3 @@ if True:
                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
             with c_excel:
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
-
-
-
-
