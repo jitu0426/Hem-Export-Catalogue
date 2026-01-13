@@ -1132,20 +1132,15 @@ if True:
                         
                         options = {
                             'page-size': 'A4',
-                            'encoding': "UTF-8",
-                            'margin-top': '0mm', 
-                            'margin-left': '0mm', 
+                            'margin-top': '0mm',
                             'margin-right': '0mm',
-                            'margin-bottom': '15mm', 
-                            'footer-center': f'Prepared for: {name}   |   Page [page] of [toPage]',
-                            'footer-font-name': 'Arial',
-                            'footer-font-size': '8',
-                            'footer-spacing': '5',
-                            'footer-line': '', 
-                            'disable-smart-shrinking': None, 
-                            'enable-local-file-access': None, 
-                            'disable-javascript': None, 
-                            'lowquality': None
+                            'margin-bottom': '0mm',
+                            'margin-left': '0mm',
+                            'encoding': "UTF-8",
+                            'no-outline': None,
+                            'enable-local-file-access': None,
+                            'disable-smart-shrinking': None,  # <--- CRITICAL: Prevents Linux from shrinking the page
+                            'print-media-type': None          # <--- Ensures CSS @media print is used correctly
                         }
                         
                         st.session_state.gen_pdf_bytes = pdfkit.from_string(html, False, configuration=CONFIG, options=options)
