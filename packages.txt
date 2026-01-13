@@ -1,1 +1,6 @@
 wkhtmltopdf
+pango
+cairo
+libpango1.0-dev
+libopenjp2-7-dev
+libffi-devwkhtmltopdf
