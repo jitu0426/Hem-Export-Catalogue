@@ -638,26 +638,12 @@ def generate_table_of_contents_html(df_sorted):
     </div>
     """
     return toc_html
-def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
-    # --- 0. SAFETY: DEFAULT TEMPLATE ---
-    global PRODUCT_CARD_TEMPLATE
-    if 'PRODUCT_CARD_TEMPLATE' not in globals():
-        PRODUCT_CARD_TEMPLATE = """
-        <div style="float: left; width: 31%; margin: 1%; border: 1px solid #ddd; padding: 10px; position: relative; height: 320px; page-break-inside: avoid;">
-            {new_badge_html}
-            <div style="height: 180px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                {image_html}
-            </div>
-            <div style="text-align: center; margin-top: 10px;">
-                <div style="font-weight: bold; font-size: 14px; height: 40px; overflow: hidden;">{item_name}</div>
-                <div style="font-size: 10px; color: #666;">{packaging}</div>
-                <div style="font-size: 10px; color: #666;">{sku_info}</div>
-                <div style="font-size: 10px; color: #666; font-style: italic;">{fragrance}</div>
-            </div>
-        </div>
-        """
 
-    # --- 1. ROBUST IMAGE LOADING ---
+def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
+    # --- 1. DEFINE PATHS ---
+    USER_SPECIFIED_PATH = r"C:\Users\maa00\OneDrive\Desktop\hem-catalogue-app_final-1\hem-catalogue-app-1\assets\watermark.png"
+    
+    # --- 2. ROBUST IMAGE LOADING ---
     def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
         paths_to_check = []
         if specific_full_path: paths_to_check.append(specific_full_path)
@@ -670,57 +656,91 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
                 found_path = p
                 break
             
-        if found_path:
-            return get_image_as_base64_str(found_path, resize=resize, max_size=max_size)
-        return "" 
+            if found_path:
+                return get_image_as_base64_str(found_path, resize=resize, max_size=max_size)
+            return "" 
 
-    # --- 2. LOAD ASSETS (Deployment Ready) ---
+    # Load images
+   # --- UPDATED: Load static assets from Cloudinary ---
     
-    # A. COVER PAGE (Using the Cloudinary Link)
-    cover_url = "https://res.cloudinary.com/dddtoqebz/image/upload/v1768288173/image-journey.jpg"
+    # 1. COVER PAGE
+    cover_url = "https://res.cloudinary.com/dddtoqebz/image/upload/v1768288172/Cover_Page.jpg"
     cover_bg_b64 = get_image_as_base64_str(cover_url)
+    # Fallback: Use local file if cloud fails
     if not cover_bg_b64:
-        # Fallback to local
         cover_bg_b64 = load_img_robust("cover page.png", resize=False)
 
-    # B. STORY PAGE (Same logic as cover - Full Page Image)
-    # If you want a different image for the story, put the URL below. 
-    # Currently pointing to local 'image-journey.png' or you can reuse cover_url if intended.
-    journey_url = "" 
-    story_img_1_b64 = get_image_as_base64_str(journey_url, max_size=None) # max_size=None for full quality
+    # 2. JOURNEY PAGE
+    # 🔴 ACTION REQUIRED: Paste your Journey Image URL inside the quotes below if you have one.
+    # If you don't have a URL yet, leave it empty "" and the fallback below will pick the local file.
+    journey_url = "https://res.cloudinary.com/dddtoqebz/image/upload/v1768288173/image-journey.jpg" 
+    
+    story_img_1_b64 = get_image_as_base64_str(journey_url, max_size=(600,600))
+    # Fallback: This will run if journey_url is empty OR if the download fails
     if not story_img_1_b64:
-        story_img_1_b64 = load_img_robust("image-journey.png", specific_full_path=STORY_IMG_1_PATH, resize=False)
+        story_img_1_b64 = load_img_robust("image-journey.png", specific_full_path=STORY_IMG_1_PATH, resize=True, max_size=(600,600))
+
+    # 3. WATERMARK
+    watermark_b64 = load_img_robust("watermark.png", specific_full_path=USER_SPECIFIED_PATH, resize=False)
 
     # --- 3. CSS STYLING ---
+    # <--- FIXED: Added box-sizing: border-box globally to prevent padding overflow issues --->
     CSS_STYLES = f"""
         <!DOCTYPE html>
         <html><head><meta charset="UTF-8">
         <style>
         @page {{ size: A4; margin: 0; }}
-        * {{ box-sizing: border-box; }} 
-        html, body {{ margin: 0 !important; padding: 0 !important; width: 100% !important; height: 100%; background-color: #ffffff; }}
         
-        /* FULL PAGE IMAGE CLASS (For Cover & Story) */
-        .full-page-container {{
-            width: 210mm;
-            height: 297mm; /* Exact A4 Height */
-            position: relative;
-            margin: 0; padding: 0;
-            overflow: hidden;
-            page-break-after: always;
-            background-color: #ffffff;
-            z-index: 10;
+        * {{ box-sizing: border-box; }} 
+        
+        html, body {{ 
+            margin: 0 !important; 
+            padding: 0 !important; 
+            width: 100% !important; 
+            height: 100%; 
+            background-color: transparent !important; 
         }}
         
-        .full-page-container img {{
-            width: 100%;
-            height: 100%;
-            object-fit: fill; /* STRETCH to fill page - eliminates white bars */
-            display: block;
+        #watermark-layer {{
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -9999; 
+            background-image: url('data:image/png;base64,{watermark_b64}');
+            background-repeat: repeat; background-position: center center; background-size: cover; 
+            background-color: transparent;
         }}
 
-        /* CATALOGUE STYLES */
-        .catalogue-content {{ padding: 10mm; display: block; position: relative; z-index: 1; }}
+        /* COVER PAGE */
+        .cover-page {{ 
+            width: 210mm; 
+            height: 260mm; 
+            display: block; position: relative; margin: 0; padding: 0; overflow: hidden; 
+            page-break-after: always;
+            background-color: #ffffff; 
+            z-index: 10; 
+        }}
+
+        /* STORY PAGE */
+        .story-page {{ 
+            width: 210mm; 
+            height: 260mm; 
+            display: block; position: relative; margin: 0; overflow: hidden; 
+            background-color: transparent; 
+            page-break-after: always;
+        }}
+
+        .toc-page {{ 
+            width: 210mm; 
+            min-height: 200mm; 
+            display: block; position: relative; margin: 0; 
+            background-color: transparent; 
+            page-break-after: always;
+        }}
+
+        .catalogue-content {{ 
+            padding-left: 10mm; padding-right: 10mm; display: block; padding-bottom: 50px; 
+            position: relative; z-index: 1; background-color: transparent; 
+        }}
+        
         .catalogue-heading {{ background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; page-break-inside: avoid; }} 
         .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 5mm; clear: both; font-family: serif; page-break-inside: avoid; }} 
         
@@ -729,26 +749,27 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         .case-size-table th {{ border: 1px solid #ddd; background-color: #f2f2f2; padding: 4px; text-align: center; font-weight: bold; font-size: 8pt; color: #333; }}
         .case-size-table td {{ border: 1px solid #ddd; padding: 4px; text-align: center; color: #444; }}
         
+        .cover-image-container {{ position: absolute; top: 0; left: 0; height: 100%; width: 100%; z-index: 1; }}
+        .cover-image-container img {{ width: 100%; height: 100%; object-fit: cover; }}
         .clearfix::after {{ content: ""; clear: both; display: table; }}
         .category-wrapper {{ display: block; clear: both; page-break-before: always; }}
         .no-break {{ page-break-before: avoid !important; }}
         </style></head><body style='margin: 0; padding: 0;'>
+        
+        <div id="watermark-layer"></div>
     """
     
     html_parts = []
     html_parts.append(CSS_STYLES)
     
-    # 1. COVER PAGE
-    html_parts.append(f"""<div class="full-page-container"><img src="data:image/png;base64,{cover_bg_b64}"></div>""")
+    # 1. Cover
+    html_parts.append(f"""<div class="cover-page"><div class="cover-image-container"><img src="data:image/png;base64,{cover_bg_b64}"></div></div>""")
     
-    # 2. STORY PAGE
-    # Directly embedding the structure here to ensure it matches the cover exactly
-    if story_img_1_b64:
-        html_parts.append(f"""<div class="full-page-container"><img src="data:image/png;base64,{story_img_1_b64}"></div>""")
+    # 2. Journey
+    html_parts.append(generate_story_html(story_img_1_b64))
     
-    # 3. Index (Only add if function exists)
-    if 'generate_table_of_contents_html' in globals():
-        html_parts.append(generate_table_of_contents_html(df_sorted))
+    # 3. Index
+    html_parts.append(generate_table_of_contents_html(df_sorted))
     
     # 4. Products
     html_parts.append('<div class="catalogue-content clearfix">')
@@ -761,26 +782,16 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
 
     current_catalogue = None; current_category = None; is_first_item = True; just_started_catalogue = False 
 
-    # --- PROGRESS BAR ---
-    total_items = len(df_sorted)
-    prog_bar = st.progress(0, text="Generating PDF: Processing images...")
-
     for index, row in df_sorted.iterrows():
-        # Update progress
-        if index % 5 == 0:
-            prog_bar.progress(min(index / total_items, 0.95), text=f"Processing Item {index+1}/{total_items}")
-
-        # Catalogue Headers
-        if row.get('Catalogue') != current_catalogue:
+        if row['Catalogue'] != current_catalogue:
             current_catalogue = row['Catalogue']; current_category = None
             break_style = 'style="page-break-before: always;"' if not is_first_item else ""
             html_parts.append(f'<div style="clear:both;"></div><h1 class="catalogue-heading" {break_style}>{current_catalogue}</h1>')
             is_first_item = False; just_started_catalogue = True 
 
-        # Category Headers & Case Size
-        if row.get('Category') != current_category:
+        if row['Category'] != current_category:
             current_category = row['Category']
-            safe_category_id = create_safe_id(current_category) if 'create_safe_id' in globals() else "cat"
+            safe_category_id = create_safe_id(current_category)
             wrapper_class = "no-break" if just_started_catalogue else "category-wrapper"
             just_started_catalogue = False 
             
@@ -808,18 +819,13 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
                 html_parts.append(f'''<table class="case-size-table"><tr><th>Packing per Master Ctn<br>(doz/box)</th><th>Gross Wt.<br>(Kg)</th><th>Net Wt.<br>(Kg)</th><th>Length<br>(Cm)</th><th>Breadth<br>(Cm)</th><th>Height<br>(Cm)</th><th>CBM</th></tr><tr><td>{packing_val}</td><td>{gross_wt}</td><td>{net_wt}</td><td>{length}</td><td>{breadth}</td><td>{height}</td><td>{cbm_val}</td></tr></table>''')
             html_parts.append('</div>')
 
-        # --- IMAGE URL TO BASE64 CONVERSION ---
-        img_b64 = row.get("ImageB64", "")
-        # Only fetch if we have a URL and no Base64
-        if (not img_b64 or len(str(img_b64)) < 100) and row.get("ImageURL"):
-            img_b64 = get_image_as_base64_str(row["ImageURL"], max_size=(300, 300))
-        
-        mime_type = 'image/png' if (img_b64 and len(str(img_b64)) > 20 and str(img_b64)[:20].lower().find('i') != -1) else 'image/jpeg'
-        image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px; display: flex; align-items: center; justify-content: center; height: 100%;">IMAGE NOT FOUND</div>'
+        img_b64 = row["ImageB64"] 
+        mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
+        image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
         
         packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
         sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
-        fragrance_list = [f.strip() for f in str(row.get('Fragrance', '')).split(',') if f.strip() and f.strip().upper() != 'N/A']
+        fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
         fragrance_output = f"Fragrance: {', '.join(fragrance_list)}" if fragrance_list else "No fragrance info listed"
         
         new_badge_html = ""
@@ -831,7 +837,7 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
                 new_badge_html=new_badge_html,
                 image_html=image_html_content, 
                 item_name=row.get('ItemName', 'N/A'), 
-                category_name=row.get('Category', ''),
+                category_name=row['Category'],
                 ref_no=index+1,
                 packaging=packaging_text, 
                 sku_info=sku_info, 
@@ -839,9 +845,9 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
             )
             html_parts.append(card_output)
     
-    prog_bar.empty()
     html_parts.append('<div style="clear: both;"></div></div></body></html>')
     return "".join(html_parts)
+
 def generate_excel_file(df_sorted, customer_name, case_selection_map):
     output = io.BytesIO()
     excel_rows = []
@@ -1154,4 +1160,3 @@ if True:
                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
             with c_excel:
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
-
