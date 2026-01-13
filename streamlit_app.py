@@ -1174,10 +1174,11 @@ if True:
                             'encoding': "UTF-8",
                             'no-outline': None,
                             'enable-local-file-access': None,
-                            'disable-smart-shrinking': None,  # <--- STOP THE SERVER FROM SHRINKING PAGES
-                            'dpi': 96,                        # <--- FORCE STANDARD RESOLUTION
-                            'zoom': 1.0,                      # <--- PREVENT UNWANTED SCALING
-                            'print-media-type': None          # <--- ENSURE CSS IS READ CORRECTLY
+                            'disable-smart-shrinking': None,  # Keep this!
+                            'print-media-type': None,
+                            # 'zoom': 1.0,  <-- REMOVE THIS (Causes link drift)
+                            # 'dpi': 96     <-- REMOVE THIS (Causes link drift)
+
     
    
                         }
@@ -1194,6 +1195,7 @@ if True:
                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
             with c_excel:
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
+
 
 
 
