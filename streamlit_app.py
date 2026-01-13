@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import pdfkit
@@ -119,7 +118,7 @@ NO_SELECTION_PLACEHOLDER = "Select..."
 
 # --- HELPER FUNCTIONS ---
 def create_safe_id(text):
-    return "".join(c for c in text.replace(' ', '-').lower() if c.isalnum() or c == '-').replace('--', '-')
+    return "".join(c for c in str(text).replace(' ', '-').lower() if c.isalnum() or c == '-').replace('--', '-')
 
 def clean_key(text):
     if not isinstance(text, str): return ""
@@ -191,7 +190,10 @@ def load_data_cached(_dummy_timestamp):
     for catalogue_name, excel_path in CATALOGUE_PATHS.items():
         if not os.path.exists(excel_path): continue
         try:
+            # FIX 1: Read with dtype=str, but immediately fillna to prevent floats
             df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
+            df = df.fillna("") # <--- THIS PREVENTS THE "FLOAT HAS NO STRIP" ERROR
+            
             df.columns = [str(c).strip() for c in df.columns]
             df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
             
@@ -297,8 +299,10 @@ def display_product_list(df_to_show, is_global_search=False):
                     add_to_cart(cat_group_df)
 
             for subcategory, subcat_group_df in cat_group_df.groupby('Subcategory'):
-                if subcategory.strip().upper() != 'N/A' and subcategory.strip().lower() != 'nan': 
-                    st.markdown(f"<div class='subcat-header'>{subcategory} ({len(subcat_group_df)})</div>", unsafe_allow_html=True)
+                # FIX 2: Ensure subcategory is a string to avoid 'float has no attribute strip'
+                subcategory_str = str(subcategory).strip()
+                if subcategory_str.upper() != 'N/A' and subcategory_str.lower() != 'nan': 
+                    st.markdown(f"<div class='subcat-header'>{subcategory_str} ({len(subcat_group_df)})</div>", unsafe_allow_html=True)
                 
                 col_name, col_check = st.columns([8, 1])
                 col_name.markdown('**Product Name**'); col_check.markdown('**Select**')
@@ -331,8 +335,8 @@ PRODUCT_CARD_TEMPLATE = """
 """
 
 def generate_story_html(story_img_1_b64):
-    text_block_1 = """HEM Corporation is amongst top global leaders...""" # (Keeping text shortened for brevity, use your full text)
-    text_journey_1 = """From a brand that was founded..."""
+    text_block_1 = """HEM Corporation is amongst top global leaders in the manufacturing and export of perfumed agarbattis. For over three decades now we have been parceling out high-quality masala sticks, agarbattis, dhoops, and cones to our customers in more than 70 countries. We are known and established for our superior quality products.<br><br>HEM has been showered with love and accolades all across the globe for its diverse range of products. This makes us the most preferred brand the world over. HEM has been awarded as the ‘Top Exporters’ brand, for incense sticks by the ‘Export Promotion Council for Handicraft’ (EPCH) for three consecutive years from 2008 till 2011.<br><br>We have also been awarded “Niryat Shree” (Export) Silver Trophy in the Handicraft category by ‘Federation of Indian Export Organization’ (FIEO). The award was presented to us by the then Honourable President of India, late Shri Pranab Mukherjee."""
+    text_journey_1 = """From a brand that was founded by three brothers in 1983, HEM Fragrances has come a long way. HEM started as a simple incense store offering products like masala agarbatti, thuribles, incense burner and dhoops. However, with time, there was a huge evolution in the world of fragrances much that the customers' needs also started changing. HEM incense can be experienced not only to provide you with rich aromatic experience but also create a perfect ambience for your daily prayers, meditation, and yoga.<br><br>The concept of aromatherapy massage, burning incense sticks and incense herbs for spiritual practices, using aromatherapy diffuser oils to promote healing and relaxation or using palo santo incense to purify and cleanse a space became popular around the world.<br><br>So, while we remained focused on creating our signature line of products, especially the ‘HEM Precious’ range which is a premium flagship collection, there was a dire need to expand our portfolio to meet increasing customer demands."""
     
     img_tag = ""
     if story_img_1_b64:
@@ -783,7 +787,9 @@ if True:
                             for category in sel_cats_multi:
                                 cat_data = catalog_subset_df[catalog_subset_df['Category'] == category]
                                 raw_subs = sorted(cat_data['Subcategory'].unique())
-                                clean_subs = [s for s in raw_subs if s.strip().upper() != 'N/A' and s.strip().lower() != 'nan' and s.strip() != '']
+                                
+                                # FIX 3: THE MAIN FIX - Safe string conversion in loop
+                                clean_subs = [s for s in raw_subs if str(s).strip().upper() != 'N/A' and str(s).strip().lower() != 'nan' and str(s).strip() != '']
                                 
                                 if clean_subs:
                                     safe_cat_key = create_safe_id(category)
