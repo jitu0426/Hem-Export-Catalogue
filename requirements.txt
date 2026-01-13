@@ -12,3 +12,15 @@ reportlab
 cloudinary
 requests
 xlsxwriter
+pango
+gdk-pixbuf
+libffi
+shared-mime-info
+libcairo2
+libpango-1.0-0
+libpangocairo-1.0-0
+libgdk-pixbuf2.0-0
+streamlit
+pandas
+pdfkit       <-- For Windows
+weasyprint   <-- For Cloud
