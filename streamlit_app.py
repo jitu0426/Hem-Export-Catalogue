@@ -686,47 +686,75 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
     # --- 3. CSS STYLING ---
     # <--- FIXED: Added box-sizing: border-box globally to prevent padding overflow issues --->
     CSS_STYLES = f"""
+# --- 3. CSS STYLING (CLOUD COMPATIBLE) ---
+    CSS_STYLES = f"""
         <!DOCTYPE html>
         <html><head><meta charset="UTF-8">
         <style>
-        @page {{ size: A4; margin: 0; }}
-        
-        * {{ box-sizing: border-box; }} 
-        
+        /* 1. RESET EVERYTHING TO ZERO */
+        @page {{ size: A4; margin: 0mm; }}
         html, body {{ 
+            width: 210mm;
+            height: 297mm;
             margin: 0 !important; 
             padding: 0 !important; 
-            width: 100% !important; 
-            height: 100%; 
-            background-color: transparent !important; 
+            background-color: #ffffff;
+            -webkit-print-color-adjust: exact; 
         }}
         
-        #watermark-layer {{
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: -9999; 
-            background-image: url('data:image/png;base64,{watermark_b64}');
-            background-repeat: repeat; background-position: center center; background-size: cover; 
-            background-color: transparent;
+        /* 2. ABSOLUTE FULL PAGE WRAPPER */
+        /* This forces the element to ignore page margins and snap to physical edges */
+        .full-page-wrapper {{
+            position: relative;
+            width: 210mm;
+            height: 297mm;
+            overflow: hidden;
+            page-break-after: always;
+            margin: 0;
+            padding: 0;
+            left: 0;
+            top: 0;
+        }}
+        
+        /* 3. IMAGE STRETCHING */
+        .full-page-img {{
+            width: 100%;
+            height: 100%;
+            object-fit: fill; /* Forces image to stretch to cover specific gaps */
+            display: block;
         }}
 
-        /* COVER PAGE */
-        .cover-page {{ 
-            width: 210mm; 
-            height: 260mm; 
-            display: block; position: relative; margin: 0; padding: 0; overflow: hidden; 
-            page-break-after: always;
-            background-color: #ffffff; 
-            z-index: 10; 
-        }}
-
-        /* STORY PAGE */
-        .story-page {{ 
-            width: 210mm; 
-            height: 260mm; 
-            display: block; position: relative; margin: 0; overflow: hidden; 
-            background-color: transparent; 
-            page-break-after: always;
-        }}
+        /* CATALOGUE CONTENT STYLES */
+        .catalogue-content {{ padding: 10mm; display: block; position: relative; z-index: 10; }}
+        .catalogue-heading {{ background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; page-break-inside: avoid; }} 
+        .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 5mm; clear: both; font-family: serif; page-break-inside: avoid; }} 
+        .case-size-info {{ color: #555; font-size: 10pt; font-style: italic; margin-bottom: 5px; clear: both; font-family: sans-serif; }}
+        .case-size-table {{ width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 9pt; margin-bottom: 10px; clear: both; background-color: rgba(255,255,255,0.9); }}
+        .case-size-table th {{ border: 1px solid #ddd; background-color: #f2f2f2; padding: 4px; text-align: center; font-weight: bold; font-size: 8pt; color: #333; }}
+        .case-size-table td {{ border: 1px solid #ddd; padding: 4px; text-align: center; color: #444; }}
+        .clearfix::after {{ content: ""; clear: both; display: table; }}
+        .category-wrapper {{ display: block; clear: both; page-break-before: always; }}
+        .no-break {{ page-break-before: avoid !important; }}
+        </style></head><body style='margin: 0; padding: 0;'>
+    """
+    
+    html_parts = []
+    html_parts.append(CSS_STYLES)
+    
+    # 1. COVER PAGE
+    html_parts.append(f"""
+    <div class="full-page-wrapper">
+        <img class="full-page-img" src="data:image/png;base64,{cover_bg_b64}">
+    </div>
+    """)
+    
+    # 2. STORY PAGE
+    if story_img_1_b64:
+        html_parts.append(f"""
+        <div class="full-page-wrapper">
+            <img class="full-page-img" src="data:image/png;base64,{story_img_1_b64}">
+        </div>
+        """)
 
         .toc-page {{ 
             width: 210mm; 
@@ -1155,3 +1183,4 @@ if True:
                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
             with c_excel:
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
+
