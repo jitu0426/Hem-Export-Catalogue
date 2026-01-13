@@ -69,13 +69,34 @@ def get_image_as_base64_str(url_or_path, resize=None, max_size=None):
         print(f"Error processing image {url_or_path}: {e}")
         return ""
     
-# Configure
-cloudinary.config(
-    cloud_name = "dddtoqebz",
-    api_key = "923925294516228",
-    api_secret = "-vc8Kem3uM4LgH-LXSu998r-5L8",
-    secure = True
-)
+# --- 2. CONFIGURATION & SETUP ---
+
+# Cloudinary Config (Robust: Works on Render, Streamlit Cloud, and Local)
+cloudinary_configured = False
+
+try:
+    # 1. Try loading from Secrets (Streamlit Cloud method)
+    # This might crash on Render if the secrets file doesn't exist, which is why we use 'try'
+    if "cloudinary" in st.secrets:
+        cloudinary.config(
+            cloud_name = st.secrets["cloudinary"]["cloud_name"],
+            api_key = st.secrets["cloudinary"]["api_key"],
+            api_secret = st.secrets["cloudinary"]["api_secret"],
+            secure = True
+        )
+        cloudinary_configured = True
+except Exception:
+    # If st.secrets fails (file not found), just ignore it and move to fallback
+    pass
+
+# 2. Fallback to Hardcoded Keys (Render/Local method)
+if not cloudinary_configured:
+    cloudinary.config(
+        cloud_name = "dddtoqebz",
+        api_key = "923925294516228",
+        api_secret = "-vc8Kem3uM4LgH-LXSu998r-5L8",
+        secure = True
+    )
 
 # Test
 try:
@@ -1160,3 +1181,4 @@ if True:
                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
             with c_excel:
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
+
