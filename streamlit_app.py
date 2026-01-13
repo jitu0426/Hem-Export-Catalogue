@@ -1159,6 +1159,8 @@ if True:
                         html = generate_pdf_html(df_final, name, logo, selection_map)
                         
                         options = {
+                            # --- PDF SETTINGS (CLOUD OPTIMIZED) ---
+  
                             'page-size': 'A4',
                             'margin-top': '0mm',
                             'margin-right': '0mm',
@@ -1167,8 +1169,12 @@ if True:
                             'encoding': "UTF-8",
                             'no-outline': None,
                             'enable-local-file-access': None,
-                            'disable-smart-shrinking': None,  # <--- CRITICAL: Prevents Linux from shrinking the page
-                            'print-media-type': None          # <--- Ensures CSS @media print is used correctly
+                            'disable-smart-shrinking': None,  # <--- STOP THE SERVER FROM SHRINKING PAGES
+                            'dpi': 96,                        # <--- FORCE STANDARD RESOLUTION
+                            'zoom': 1.0,                      # <--- PREVENT UNWANTED SCALING
+                            'print-media-type': None          # <--- ENSURE CSS IS READ CORRECTLY
+    
+   
                         }
                         
                         st.session_state.gen_pdf_bytes = pdfkit.from_string(html, False, configuration=CONFIG, options=options)
@@ -1183,4 +1189,5 @@ if True:
                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
             with c_excel:
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
+
 
