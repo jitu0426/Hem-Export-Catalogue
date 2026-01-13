@@ -24,7 +24,7 @@ import requests
 import base64
 import os
 
-# --- 100% SAFE IMPORT LOGIC ---
+# --- 1. SAFE IMPORT LOGIC ---
 HAS_WEASYPRINT = False
 try:
     from weasyprint import HTML, CSS
@@ -33,7 +33,7 @@ except Exception as e:
     print(f"WeasyPrint import failed (Non-fatal): {e}")
     HAS_WEASYPRINT = False
 
-# Configure Cloudinary
+# --- 2. CLOUDINARY CONFIG ---
 cloudinary.config(
     cloud_name = "dddtoqebz",
     api_key = "923925294516228",
@@ -41,7 +41,7 @@ cloudinary.config(
     secure = True
 )
 
-# --- HELPER: IMAGE PROCESSING ---
+# --- 3. HELPER FUNCTIONS ---
 def get_image_as_base64_str(url_or_path, resize=None, max_size=None):
     if not url_or_path: return ""
     try:
@@ -53,18 +53,30 @@ def get_image_as_base64_str(url_or_path, resize=None, max_size=None):
             if not os.path.exists(url_or_path): return ""
             img = Image.open(url_or_path)
             
-        if max_size: img.thumbnail(max_size)
-        elif resize: img = img.resize(resize) 
+        if max_size:
+            img.thumbnail(max_size)
+        elif resize:
+            img = img.resize(resize) 
             
         buffered = io.BytesIO()
-        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
         img.save(buffered, format="JPEG", quality=85)
         return base64.b64encode(buffered.getvalue()).decode()
     except Exception as e:
         print(f"Error processing image {url_or_path}: {e}")
         return ""
 
-# --- 0. AUTO-FIX FOR LIGHT THEME ---
+def create_safe_id(text):
+    return "".join(c for c in str(text).replace(' ', '-').lower() if c.isalnum() or c == '-').replace('--', '-')
+
+def clean_key(text):
+    if not isinstance(text, str): return ""
+    text = text.lower().strip().replace(' ', '').replace('_', '').replace('-', '')
+    for stop_word in ['catalogue', 'image', 'images', 'product', 'products', 'img']:
+        text = text.replace(stop_word, '')
+    return text
+
 def force_light_theme_setup():
     config_dir = ".streamlit"
     config_path = os.path.join(config_dir, "config.toml")
@@ -73,12 +85,10 @@ def force_light_theme_setup():
         theme_content = "[theme]\nbase='light'\nprimaryColor='#007bff'\nbackgroundColor='#ffffff'\nsecondaryBackgroundColor='#f0f2f6'\ntextColor='#000000'\nfont='sans serif'"
         with open(config_path, "w") as f: f.write(theme_content.strip())
 
+# --- 4. APP SETUP ---
 force_light_theme_setup()
-
-# --- 1. PAGE CONFIG ---
 st.set_page_config(page_title="HEM PRODUCT CATALOGUE", page_icon="🛍️", layout="wide")
 
-# --- 2. GLOBAL STYLES ---
 st.markdown("""
     <style>
         .stApp { background-color: #ffffff !important; color: #000000 !important; }
@@ -89,17 +99,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- PATH SETUP ---
+# --- 5. PATHS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates") 
 SAVED_TEMPLATES_FILE = os.path.join(BASE_DIR, "saved_templates.json")
 
-# --- IMAGES ---
 STORY_IMG_1_PATH = os.path.join(BASE_DIR, "image-journey.png") 
 COVER_IMG_PATH = os.path.join(BASE_DIR, "assets", "cover page.png")
 WATERMARK_IMG_PATH = os.path.join(BASE_DIR, "assets", "watermark.png") 
-IMAGE_DIR = os.path.join(BASE_DIR, "images") 
 
 CATALOGUE_PATHS = {
     "HEM Product Catalogue": os.path.join(BASE_DIR, "Hem catalogue.xlsx"),
@@ -116,18 +124,7 @@ GLOBAL_COLUMN_MAPPING = {
 }
 NO_SELECTION_PLACEHOLDER = "Select..." 
 
-# --- HELPER FUNCTIONS ---
-def create_safe_id(text):
-    return "".join(c for c in str(text).replace(' ', '-').lower() if c.isalnum() or c == '-').replace('--', '-')
-
-def clean_key(text):
-    if not isinstance(text, str): return ""
-    text = text.lower().strip().replace(' ', '').replace('_', '').replace('-', '')
-    for stop_word in ['catalogue', 'image', 'images', 'product', 'products', 'img']:
-        text = text.replace(stop_word, '')
-    return text
-
-# --- PDFKIT CONFIG (LOCAL ONLY) ---
+# --- 6. PDFKIT CONFIG ---
 CONFIG = None
 try:
     if platform.system() == "Windows":
@@ -152,47 +149,53 @@ except Exception as e:
     print(f"PDFKit Config Error: {e}")
     CONFIG = None
 
-# --- TEMPLATE FUNCTIONS ---
+# --- 7. TEMPLATE MANAGEMENT (FIXED SYNTAX ERROR) ---
 def load_saved_templates():
-    if not os.path.exists(SAVED_TEMPLATES_FILE): return {}
-    try: with open(SAVED_TEMPLATES_FILE, 'r') as f: return json.load(f)
-    except: return {}
+    if not os.path.exists(SAVED_TEMPLATES_FILE):
+        return {}
+    try: 
+        # FIXED: Expanded to multiple lines to avoid SyntaxError
+        with open(SAVED_TEMPLATES_FILE, 'r') as f:
+            return json.load(f)
+    except:
+        return {}
 
 def save_template_to_disk(name, cart_items):
     templates = load_saved_templates()
     templates[name] = cart_items
-    with open(SAVED_TEMPLATES_FILE, 'w') as f: json.dump(templates, f, indent=4)
-    st.toast(f"Template '{name}' saved!", icon="💾")
+    try:
+        with open(SAVED_TEMPLATES_FILE, 'w') as f:
+            json.dump(templates, f, indent=4)
+        st.toast(f"Template '{name}' saved!", icon="💾")
+    except Exception as e:
+        st.error(f"Failed to save template: {e}")
 
-# --- DATA LOADING (NOW WITH REFRESH LOGIC) ---
-# NOTE: Removed @st.cache_data here. We will cache it MANUALLY inside the function to allow clearing.
-@st.cache_data(show_spinner="Loading Data...")
+# --- 8. DATA LOADING (FIXED FLOAT ERROR & CACHING) ---
+@st.cache_data(show_spinner="Syncing with Cloudinary & Excel...")
 def load_data_cached(_dummy_timestamp):
-    # The _dummy_timestamp argument forces the cache to invalidate when we change it!
     all_data = []
     required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
     
-    # --- CLOUDINARY FETCH ---
+    # A. Cloudinary
     cloudinary_map = {}
     try:
         cloudinary.api.ping()
-        # Fetching fewer results to be faster, or use pagination if needed
         resources = cloudinary.api.resources(type="upload", max_results=500)
         for res in resources.get('resources', []):
             public_id = res['public_id'].split('/')[-1] 
             c_key = clean_key(public_id)
             cloudinary_map[c_key] = res['secure_url']
     except Exception as e:
-        st.warning(f"⚠️ Cloudinary Warning: Could not fetch images. ({e})")
+        st.warning(f"⚠️ Cloudinary Warning: {e}")
         cloudinary_map = {} 
 
-    # --- EXCEL LOADING ---
+    # B. Excel
     for catalogue_name, excel_path in CATALOGUE_PATHS.items():
         if not os.path.exists(excel_path): continue
         try:
-            # FIX 1: Read with dtype=str, but immediately fillna to prevent floats
+            # FIXED: Fill NaN immediately to prevent "float" errors later
             df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
-            df = df.fillna("") # <--- THIS PREVENTS THE "FLOAT HAS NO STRIP" ERROR
+            df = df.fillna("") 
             
             df.columns = [str(c).strip() for c in df.columns]
             df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
@@ -206,7 +209,7 @@ def load_data_cached(_dummy_timestamp):
             for col in required_output_cols:
                 if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
 
-            # --- IMAGE MATCHING ---
+            # C. Image Matching
             if cloudinary_map:
                 for index, row in df.iterrows():
                     row_item_key = clean_key(row['ItemName'])
@@ -223,7 +226,6 @@ def load_data_cached(_dummy_timestamp):
                         if best_score < 75: found_url = None
 
                     if found_url:
-                        # Append version to bypass cache if needed, though requests.get handles this usually
                         df.loc[index, "ImageB64"] = get_image_as_base64_str(found_url)
             
             all_data.append(df[required_output_cols])
@@ -234,7 +236,7 @@ def load_data_cached(_dummy_timestamp):
     full_df = pd.concat(all_data, ignore_index=True)
     return full_df
 
-# --- CART UTILS ---
+# --- 9. CART UTILS ---
 def add_to_cart(selected_df):
     current_pids = {item["ProductID"] for item in st.session_state.cart}
     new_items = []
@@ -279,7 +281,6 @@ def clear_filters_dropdown():
     st.session_state.selected_categories_multi = []
     st.session_state.selected_subcategories_multi = []
     st.session_state.item_search_query = ""
-    # Safe deletion of keys
     if "item_search_input" in st.session_state: del st.session_state["item_search_input"] 
     if "category_multiselect" in st.session_state: del st.session_state["category_multiselect"]
     if "subcategory_multiselect" in st.session_state: del st.session_state["subcategory_multiselect"]
@@ -289,7 +290,6 @@ def display_product_list(df_to_show, is_global_search=False):
     if df_to_show.empty: st.info("No products match filters/search."); return
 
     grouped_by_category = df_to_show.groupby('Category')
-    
     for category, cat_group_df in grouped_by_category:
         cat_count = len(cat_group_df)
         with st.expander(f"{category} ({cat_count})", expanded=is_global_search):
@@ -299,7 +299,7 @@ def display_product_list(df_to_show, is_global_search=False):
                     add_to_cart(cat_group_df)
 
             for subcategory, subcat_group_df in cat_group_df.groupby('Subcategory'):
-                # FIX 2: Ensure subcategory is a string to avoid 'float has no attribute strip'
+                # FIXED: Ensure safe string conversion
                 subcategory_str = str(subcategory).strip()
                 if subcategory_str.upper() != 'N/A' and subcategory_str.lower() != 'nan': 
                     st.markdown(f"<div class='subcat-header'>{subcategory_str} ({len(subcat_group_df)})</div>", unsafe_allow_html=True)
@@ -316,7 +316,7 @@ def display_product_list(df_to_show, is_global_search=False):
                     if col_check.checkbox("Select", value=initial_checked, key=unique_key, label_visibility="hidden"):
                         pass
 
-# --- PDF GENERATOR HELPERS ---
+# --- 10. PDF GENERATOR ---
 PRODUCT_CARD_TEMPLATE = """
 <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;">
     <div style="font-family: sans-serif; font-size: 8pt; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px;">
@@ -360,7 +360,6 @@ def generate_story_html(story_img_1_b64):
     return html
 
 def generate_table_of_contents_html(df_sorted):
-    # --- 1. PREPARE DATA ---
     categories_data = []
     seen_categories = set()
     unique_categories = []
@@ -385,48 +384,20 @@ def generate_table_of_contents_html(df_sorted):
             "safe_id": create_safe_id(category)
         })
 
-    # --- 2. CSS STYLING (FIXED FOR LINKS) ---
-    # Key Fix: Added explicit display: block to the anchor tag
+    # FIXED: CSS for clickable links (display: block, z-index)
     toc_html = """
     <style>
-        .toc-title {
-            text-align: center; font-family: serif; font-size: 32pt; color: #222;
-            margin-bottom: 30px; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px;
-        }
+        .toc-title { text-align: center; font-family: serif; font-size: 32pt; color: #222; margin-bottom: 30px; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; }
         .index-grid-container { width: 100%; margin: 0 auto; }
-
-        /* FIXED: Anchor tag styles to ensure clickability */
+        
         a.index-card-link {
-            display: block; 
-            float: left;
-            width: 30%;         
-            margin: 1.5%;       
-            height: 200px;      
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
-            text-decoration: none;
-            overflow: hidden;
-            border: 1px solid #e0e0e0;
-            page-break-inside: avoid;
-            position: relative;
-            z-index: 100; /* Force on top */
+            display: block; float: left; width: 30%; margin: 1.5%; height: 200px;
+            background-color: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+            text-decoration: none; overflow: hidden; border: 1px solid #e0e0e0;
+            page-break-inside: avoid; position: relative; z-index: 100;
         }
-
-        .index-card-image {
-            width: 100%; height: 160px; 
-            background-repeat: no-repeat; background-position: center center; background-size: cover; 
-            background-color: #f9f9f9;
-        }
-
-        .index-card-label {
-            height: 40px; background-color: #b30000; color: white;
-            font-family: sans-serif; font-size: 10pt; font-weight: bold;
-            display: block; line-height: 40px; text-align: center;
-            text-transform: uppercase; letter-spacing: 0.5px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;
-        }
-
+        .index-card-image { width: 100%; height: 160px; background-repeat: no-repeat; background-position: center center; background-size: cover; background-color: #f9f9f9; }
+        .index-card-label { height: 40px; background-color: #b30000; color: white; font-family: sans-serif; font-size: 10pt; font-weight: bold; display: block; line-height: 40px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; }
         .clearfix::after { content: ""; clear: both; display: table; }
     </style>
 
@@ -434,16 +405,8 @@ def generate_table_of_contents_html(df_sorted):
         <h1 class="toc-title">Our Products</h1>
         <div class="index-grid-container clearfix">
     """
-
-    # --- 3. GENERATE CARDS ---
     for cat in categories_data:
-        bg_style = ""
-        if cat['image']:
-            bg_style = f"background-image: url('data:image/png;base64,{cat['image']}');"
-        else:
-            bg_style = "background-color: #eee;" 
-
-        # Note: Added class 'index-card-link' to the anchor
+        bg_style = f"background-image: url('data:image/png;base64,{cat['image']}');" if cat['image'] else "background-color: #eee;" 
         card_html = f"""
             <a href="#category-{cat['safe_id']}" class="index-card-link">
                 <div class="index-card-image" style="{bg_style}"></div>
@@ -452,35 +415,24 @@ def generate_table_of_contents_html(df_sorted):
         """
         toc_html += card_html
 
-    toc_html += """
-        </div>
-        <div style="clear: both;"></div>
-    </div>
-    """
+    toc_html += """</div><div style="clear: both;"></div></div>"""
     return toc_html
 
 def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
-    # --- 1. DEFINE PATHS ---
-    USER_SPECIFIED_PATH = r"C:\Users\maa00\OneDrive\Desktop\hem-catalogue-app_final-1\hem-catalogue-app-1\assets\watermark.png"
-    
-    # --- 2. ROBUST IMAGE LOADING ---
+    # ROBUST LOADING
     def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
         paths_to_check = []
         if specific_full_path: paths_to_check.append(specific_full_path)
         paths_to_check.append(os.path.join(BASE_DIR, "assets", fname))
         paths_to_check.append(os.path.join(BASE_DIR, fname))
-        
         found_path = None
         for p in paths_to_check:
             if os.path.exists(p):
                 found_path = p
                 break
-            
-            if found_path:
-                return get_image_as_base64_str(found_path, resize=resize, max_size=max_size)
-            return "" 
+            if found_path: return get_image_as_base64_str(found_path, resize=resize, max_size=max_size)
+        return "" 
 
-    # Load images
     cover_url = "https://res.cloudinary.com/dddtoqebz/image/upload/v1768288172/Cover_Page.jpg"
     cover_bg_b64 = get_image_as_base64_str(cover_url)
     if not cover_bg_b64: cover_bg_b64 = load_img_robust("cover page.png", resize=False)
@@ -489,58 +441,39 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
     story_img_1_b64 = get_image_as_base64_str(journey_url, max_size=(600,600))
     if not story_img_1_b64: story_img_1_b64 = load_img_robust("image-journey.png", specific_full_path=STORY_IMG_1_PATH, resize=True, max_size=(600,600))
 
-    watermark_b64 = load_img_robust("watermark.png", specific_full_path=USER_SPECIFIED_PATH, resize=False)
+    watermark_b64 = load_img_robust("watermark.png", resize=False)
 
-    # --- 3. CSS STYLING ---
+    # CSS & HTML
     CSS_STYLES = f"""
         <!DOCTYPE html>
         <html><head><meta charset="UTF-8">
         <style>
         @page {{ size: A4; margin: 0; }}
         * {{ box-sizing: border-box; }} 
-        
         html, body {{ margin: 0 !important; padding: 0 !important; width: 100% !important; height: 100%; background-color: transparent !important; }}
         
-        /* FIXED: Z-index issues for links. Watermark is -9999, content is default. */
         #watermark-layer {{
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: -1; /* Changed from -9999 to -1 for better compatibility */
+            z-index: -1; 
             background-image: url('data:image/png;base64,{watermark_b64}');
             background-repeat: repeat; background-position: center center; background-size: cover; 
             background-color: transparent;
         }}
-
-        .cover-page {{ 
-            width: 210mm; height: 260mm; 
-            display: block; position: relative; margin: 0; padding: 0; overflow: hidden; 
-            page-break-after: always; background-color: #ffffff; z-index: 10; 
-        }}
-
-        .story-page, .toc-page {{ 
-            width: 210mm; display: block; position: relative; margin: 0; 
-            background-color: transparent; page-break-after: always;
-        }}
-
-        .catalogue-content {{ 
-            padding-left: 10mm; padding-right: 10mm; display: block; padding-bottom: 50px; 
-            position: relative; z-index: 1; background-color: transparent; 
-        }}
-        
+        .cover-page {{ width: 210mm; height: 260mm; display: block; position: relative; margin: 0; padding: 0; overflow: hidden; page-break-after: always; background-color: #ffffff; z-index: 10; }}
+        .story-page, .toc-page {{ width: 210mm; display: block; position: relative; margin: 0; background-color: transparent; page-break-after: always; }}
+        .catalogue-content {{ padding-left: 10mm; padding-right: 10mm; display: block; padding-bottom: 50px; position: relative; z-index: 1; background-color: transparent; }}
         .catalogue-heading {{ background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; page-break-inside: avoid; }} 
         .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 5mm; clear: both; font-family: serif; page-break-inside: avoid; }} 
-        
         .case-size-info {{ color: #555; font-size: 10pt; font-style: italic; margin-bottom: 5px; clear: both; font-family: sans-serif; }}
         .case-size-table {{ width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 9pt; margin-bottom: 10px; clear: both; background-color: rgba(255,255,255,0.9); }}
         .case-size-table th {{ border: 1px solid #ddd; background-color: #f2f2f2; padding: 4px; text-align: center; font-weight: bold; font-size: 8pt; color: #333; }}
         .case-size-table td {{ border: 1px solid #ddd; padding: 4px; text-align: center; color: #444; }}
-        
         .cover-image-container {{ position: absolute; top: 0; left: 0; height: 100%; width: 100%; z-index: 1; }}
         .cover-image-container img {{ width: 100%; height: 100%; object-fit: cover; }}
         .clearfix::after {{ content: ""; clear: both; display: table; }}
         .category-wrapper {{ display: block; clear: both; page-break-before: always; }}
         .no-break {{ page-break-before: avoid !important; }}
         </style></head><body style='margin: 0; padding: 0;'>
-        
         <div id="watermark-layer"></div>
     """
     
@@ -571,14 +504,7 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
             safe_category_id = create_safe_id(current_category)
             wrapper_class = "no-break" if just_started_catalogue else "category-wrapper"
             just_started_catalogue = False 
-            
-            html_parts.append(f'<div class="{wrapper_class}">') 
-            html_parts.append(f'''
-            <h2 class="category-heading" id="category-{safe_category_id}">
-                <a href="#main-index" style="float: right; font-size: 10px; color: #555; text-decoration: none; font-weight: normal; font-family: sans-serif; margin-top: 4px;">BACK TO INDEX &uarr;</a>
-                {current_category}
-            </h2>
-            ''')
+            html_parts.append(f'<div class="{wrapper_class}"><h2 class="category-heading" id="category-{safe_category_id}"><a href="#main-index" style="float: right; font-size: 10px; color: #555; text-decoration: none; font-weight: normal; font-family: sans-serif; margin-top: 4px;">BACK TO INDEX &uarr;</a>{current_category}</h2>')
             
             if current_category in case_selection_map:
                 row_data = case_selection_map[current_category]
@@ -605,21 +531,10 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
         fragrance_output = f"Fragrance: {', '.join(fragrance_list)}" if fragrance_list else "No fragrance info listed"
         
-        new_badge_html = ""
-        if row.get('IsNew') == 1:
-            new_badge_html = """<div style="position: absolute; top: 0; right: 0; background-color: #dc3545; color: white; font-size: 8px; font-weight: bold; padding: 2px 8px; border-radius: 0 0 0 5px; z-index: 10;">NEW</div>"""
+        new_badge_html = """<div style="position: absolute; top: 0; right: 0; background-color: #dc3545; color: white; font-size: 8px; font-weight: bold; padding: 2px 8px; border-radius: 0 0 0 5px; z-index: 10;">NEW</div>""" if row.get('IsNew') == 1 else ""
 
         if PRODUCT_CARD_TEMPLATE:
-            card_output = PRODUCT_CARD_TEMPLATE.format(
-                new_badge_html=new_badge_html,
-                image_html=image_html_content, 
-                item_name=row.get('ItemName', 'N/A'), 
-                category_name=row['Category'],
-                ref_no=index+1,
-                packaging=packaging_text, 
-                sku_info=sku_info, 
-                fragrance=fragrance_output
-            )
+            card_output = PRODUCT_CARD_TEMPLATE.format(new_badge_html=new_badge_html, image_html=image_html_content, item_name=row.get('ItemName', 'N/A'), category_name=row['Category'], ref_no=index+1, packaging=packaging_text, sku_info=sku_info, fragrance=fragrance_output)
             html_parts.append(card_output)
     
     html_parts.append('<div style="clear: both;"></div></div></body></html>')
@@ -632,35 +547,24 @@ def generate_excel_file(df_sorted, customer_name, case_selection_map):
     for idx, row in df_sorted.iterrows():
         cat = row['Category']
         suffix = ""; cbm = 0.0
-        
         if cat in case_selection_map:
             case_data = case_selection_map[cat]
             for k in case_data.keys():
                 if "suffix" in k.lower(): suffix = str(case_data[k]).strip()
                 if "cbm" in k.lower(): 
-                    try: 
-                        cbm = round(float(case_data[k]), 3)
+                    try: cbm = round(float(case_data[k]), 3)
                     except: cbm = 0.0
             if suffix == 'nan': suffix = ""
-        
         full_name = str(row['ItemName']).strip()
         if suffix: full_name = f"{full_name} {suffix}"
             
-        excel_rows.append({
-            "Ref No": idx + 1,
-            "Category": cat,
-            "Product Name + Carton Name": full_name,
-            "Carton per CBM": cbm,
-            "Order Quantity (Cartons)": 0, 
-            "Total CBM": 0 
-        })
+        excel_rows.append({ "Ref No": idx + 1, "Category": cat, "Product Name + Carton Name": full_name, "Carton per CBM": cbm, "Order Quantity (Cartons)": 0, "Total CBM": 0 })
         
     df_excel = pd.DataFrame(excel_rows)
 
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df_excel.to_excel(writer, index=False, sheet_name='Order Sheet', startrow=7) 
         workbook = writer.book; worksheet = writer.sheets['Order Sheet']
-        
         header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
         input_fmt = workbook.add_format({'bg_color': '#FFFCB7', 'border': 1, 'locked': False})
         locked_fmt = workbook.add_format({'border': 1, 'locked': True, 'num_format': '0.000'})
@@ -669,29 +573,20 @@ def generate_excel_file(df_sorted, customer_name, case_selection_map):
         
         worksheet.protect()
         worksheet.freeze_panes(8, 0)
-        
         worksheet.write('B1', f"Order Sheet for: {customer_name}", title_fmt)
         worksheet.write('B2', 'Total CBM:')
         worksheet.write_formula('C2', f'=SUM(F9:F{len(df_excel)+9})', workbook.add_format({'num_format': '0.000'}))
-        
         worksheet.write('B3', 'CONTAINER TYPE', workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1}))
         worksheet.write('C3', 'ESTIMATED CONTAINERS', workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1}))
-        
         worksheet.write('B4', '20 FT (30 CBM)', workbook.add_format({'border': 1}))
         worksheet.write('B5', '40 FT (60 CBM)', workbook.add_format({'border': 1}))
         worksheet.write('B6', '40 FT HC (70 CBM)', workbook.add_format({'border': 1}))
-        
         worksheet.write_formula('C4', '=$C$2/30', count_fmt)
         worksheet.write_formula('C5', '=$C$2/60', count_fmt)
         worksheet.write_formula('C6', '=$C$2/70', count_fmt)
 
-        for col_num, value in enumerate(df_excel.columns): 
-            worksheet.write(7, col_num, value, header_fmt)
-
-        worksheet.set_column('A:A', 8)  
-        worksheet.set_column('B:B', 25) 
-        worksheet.set_column('C:C', 50) 
-        worksheet.set_column('D:F', 15) 
+        for col_num, value in enumerate(df_excel.columns): worksheet.write(7, col_num, value, header_fmt)
+        worksheet.set_column('A:A', 8); worksheet.set_column('B:B', 25); worksheet.set_column('C:C', 50); worksheet.set_column('D:F', 15) 
         
         for i in range(len(df_excel)):
             row_idx = i + 9 
@@ -700,7 +595,7 @@ def generate_excel_file(df_sorted, customer_name, case_selection_map):
 
     return output.getvalue()
 
-# --- MAIN APP ---
+# --- 11. MAIN APP LOGIC ---
 if True: 
     if "cart" not in st.session_state: st.session_state.cart = []
     if "gen_pdf_bytes" not in st.session_state: st.session_state.gen_pdf_bytes = None
@@ -709,11 +604,10 @@ if True:
     if 'selected_categories_multi' not in st.session_state: st.session_state.selected_categories_multi = []
     if 'selected_subcategories_multi' not in st.session_state: st.session_state.selected_subcategories_multi = []
     if 'item_search_query' not in st.session_state: st.session_state.item_search_query = ""
-    if 'category_multiselect_prev' not in st.session_state: st.session_state['category_multiselect_prev'] = []
     if 'master_pid_map' not in st.session_state: st.session_state['master_pid_map'] = {}
-    if 'data_timestamp' not in st.session_state: st.session_state.data_timestamp = time.time() # INIT TIMESTAMP
+    if 'data_timestamp' not in st.session_state: st.session_state.data_timestamp = time.time()
 
-    # --- REFRESH LOGIC: pass timestamp to cached function ---
+    # REFRESH DATA LOGIC
     products_df = load_data_cached(st.session_state.data_timestamp)
     st.session_state['master_pid_map'] = {row['ProductID']: row.to_dict() for _, row in products_df.iterrows()}
 
@@ -733,11 +627,9 @@ if True:
                     st.rerun()
         
         st.markdown("---")
-        # --- NEW: REFRESH BUTTON ---
         st.markdown("### 🔄 Data Sync")
         if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file."):
-            st.session_state.data_timestamp = time.time() # Update timestamp to invalidate cache
-            # Clear specific keys to force UI update
+            st.session_state.data_timestamp = time.time()
             st.cache_data.clear()
             st.rerun()
 
@@ -748,7 +640,6 @@ if True:
         if products_df.empty: st.error("No Data. Please check Excel file paths.")
         else:
             final_df = products_df.copy()
-            
             def update_search(): st.session_state.item_search_query = st.session_state["item_search_input"]
             search_term = st.text_input("🔍 Global Search (Products, Fragrance, SKU)", value=st.session_state.item_search_query, key="item_search_input", on_change=update_search).lower()
             
@@ -776,7 +667,6 @@ if True:
                         valid_defaults_cat = [c for c in st.session_state.selected_categories_multi if c in category_options]
                         if valid_defaults_cat != st.session_state.selected_categories_multi: 
                             st.session_state.selected_categories_multi = valid_defaults_cat
-                            
                         sel_cats_multi = st.multiselect("Category", category_options, default=st.session_state.selected_categories_multi, key="category_multiselect")
                         st.session_state.selected_categories_multi = sel_cats_multi 
                         
@@ -787,40 +677,23 @@ if True:
                             for category in sel_cats_multi:
                                 cat_data = catalog_subset_df[catalog_subset_df['Category'] == category]
                                 raw_subs = sorted(cat_data['Subcategory'].unique())
-                                
-                                # FIX 3: THE MAIN FIX - Safe string conversion in loop
                                 clean_subs = [s for s in raw_subs if str(s).strip().upper() != 'N/A' and str(s).strip().lower() != 'nan' and str(s).strip() != '']
                                 
                                 if clean_subs:
                                     safe_cat_key = create_safe_id(category)
-                                    sel_subs = st.multiselect(
-                                        f"Select for **{category}**", 
-                                        clean_subs, 
-                                        default=clean_subs, 
-                                        key=f"sub_select_{safe_cat_key}"
-                                    )
-                                    cat_data_filtered = cat_data[
-                                        cat_data['Subcategory'].isin(sel_subs) | 
-                                        cat_data['Subcategory'].isin(['N/A', 'nan', '']) |
-                                        cat_data['Subcategory'].isna()
-                                    ]
+                                    sel_subs = st.multiselect(f"Select for **{category}**", clean_subs, default=clean_subs, key=f"sub_select_{safe_cat_key}")
+                                    cat_data_filtered = cat_data[cat_data['Subcategory'].isin(sel_subs) | cat_data['Subcategory'].isin(['N/A', 'nan', '']) | cat_data['Subcategory'].isna()]
                                     filtered_dfs.append(cat_data_filtered)
                                 else:
                                     filtered_dfs.append(cat_data)
-                            
                             if filtered_dfs: final_df = pd.concat(filtered_dfs)
                             else: final_df = pd.DataFrame(columns=products_df.columns)
                         else:
                             final_df = catalog_subset_df
-
                 with col_btns:
                     st.markdown("#### Actions")
-                    if st.button("ADD SELECTED", use_container_width=True, type="primary"):
-                        add_selected_visible_to_cart(final_df) 
-                    
-                    if st.button("ADD FILTERED", use_container_width=True, type="secondary"):
-                        add_to_cart(final_df) 
-                        
+                    if st.button("ADD SELECTED", use_container_width=True, type="primary"): add_selected_visible_to_cart(final_df) 
+                    if st.button("ADD FILTERED", use_container_width=True, type="secondary"): add_to_cart(final_df) 
                     st.button("Clear Filters", use_container_width=True, on_click=clear_filters_dropdown)
 
                 st.markdown("---")
@@ -838,19 +711,7 @@ if True:
             
             cart_df['Remove'] = False
             editable_df_view = cart_df[['Catalogue', 'Category', 'ItemName', 'Remove']]
-            
-            edited_df = st.data_editor(
-                editable_df_view, 
-                column_config={
-                    "Remove": st.column_config.CheckboxColumn("Remove?", default=False, width="small"),
-                    "Catalogue": st.column_config.TextColumn("Catalogue Source", width="medium"),
-                    "Category": st.column_config.TextColumn("Category", width="medium"), 
-                    "ItemName": st.column_config.TextColumn("Product Name", width="large")
-                }, 
-                hide_index=True, 
-                key="cart_data_editor_fixed",
-                use_container_width=True
-            )
+            edited_df = st.data_editor(editable_df_view, column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False, width="small"), "Catalogue": st.column_config.TextColumn("Catalogue Source", width="medium"), "Category": st.column_config.TextColumn("Category", width="medium"), "ItemName": st.column_config.TextColumn("Product Name", width="large")}, hide_index=True, key="cart_data_editor_fixed", use_container_width=True)
             
             indices_to_remove = edited_df[edited_df['Remove'] == True].index.tolist()
             if indices_to_remove: pids_to_remove = cart_df.loc[indices_to_remove, 'ProductID'].tolist()
@@ -886,7 +747,6 @@ if True:
             if not full_case_size_df.empty:
                 suffix_col = next((c for c in full_case_size_df.columns if "suffix" in c.lower()), None)
                 cbm_col = next((c for c in full_case_size_df.columns if "cbm" in c.lower()), "CBM")
-                
                 if not suffix_col: st.error(f"Could not find 'Carton Suffix' column. Found: {full_case_size_df.columns.tolist()}")
                 else:
                     for cat in cart_categories:
@@ -902,7 +762,6 @@ if True:
             st.markdown("---")
             name = st.text_input("Client Name", "Valued Client")
             
-            # --- MODIFIED: PDF GENERATION LOGIC ---
             if st.button("Generate Catalogue & Order Sheet"):
                 cart_data = st.session_state.cart
                 schema_cols = ['Catalogue', 'Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'ImageB64', 'Packaging', 'IsNew']
@@ -915,38 +774,21 @@ if True:
                 st.toast("Generating files...", icon="⏳")
                 st.session_state.gen_excel_bytes = generate_excel_file(df_final, name, selection_map)
                 
-                # --- DUAL PDF ENGINE LOGIC ---
                 try:
                     logo = get_image_as_base64_str(LOGO_PATH, resize=True, max_size=(200,100)) 
                     html = generate_pdf_html(df_final, name, logo, selection_map)
                     
-                    # 1. PRIORITY: TRY PDFKIT (LOCAL / IF CONFIGURED)
                     if CONFIG:
-                        options = {
-                            'page-size': 'A4',
-                            'margin-top': '0mm',
-                            'margin-right': '0mm',
-                            'margin-bottom': '0mm',
-                            'margin-left': '0mm',
-                            'encoding': "UTF-8",
-                            'no-outline': None,
-                            'enable-local-file-access': None,
-                            'disable-smart-shrinking': None,
-                            'print-media-type': None
-                        }
+                        options = { 'page-size': 'A4', 'margin-top': '0mm', 'margin-right': '0mm', 'margin-bottom': '0mm', 'margin-left': '0mm', 'encoding': "UTF-8", 'no-outline': None, 'enable-local-file-access': None, 'disable-smart-shrinking': None, 'print-media-type': None }
                         st.session_state.gen_pdf_bytes = pdfkit.from_string(html, False, configuration=CONFIG, options=options)
                         st.toast("PDF generated via PDFKit (Local)!", icon="🎉")
-                        
-                    # 2. FALLBACK: TRY WEASYPRINT (SERVER / RENDER)
                     elif HAS_WEASYPRINT:
                         st.toast("Using Cloud Engine (WeasyPrint)...", icon="☁️")
                         st.session_state.gen_pdf_bytes = HTML(string=html, base_url=BASE_DIR).write_pdf()
                         st.toast("PDF generated via WeasyPrint (Cloud)!", icon="🎉")
-                        
                     else:
                         st.error("❌ No PDF engine found! (Install 'wkhtmltopdf' locally or 'weasyprint' on server).")
                         st.session_state.gen_pdf_bytes = None
-
                 except Exception as e: 
                     st.error(f"Error generating PDF: {e}")
                     st.session_state.gen_pdf_bytes = None
