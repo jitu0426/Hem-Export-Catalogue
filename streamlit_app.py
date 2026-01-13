@@ -725,7 +725,8 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         }}
 
         /* CATALOGUE CONTENT STYLES */
-        .catalogue-content {{ padding: 10mm; display: block; position: relative; z-index: 10; }}
+        /* CATALOGUE CONTENT STYLES */
+        .catalogue-content { padding: 10mm; display: block; position: relative; z-index: 10; }
         .catalogue-heading {{ background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; page-break-inside: avoid; }} 
         .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 5mm; clear: both; font-family: serif; page-break-inside: avoid; }} 
         .case-size-info {{ color: #555; font-size: 10pt; font-style: italic; margin-bottom: 5px; clear: both; font-family: sans-serif; }}
@@ -764,10 +765,14 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
             page-break-after: always;
         }}
 
-        .catalogue-content {{ 
-            padding-left: 10mm; padding-right: 10mm; display: block; padding-bottom: 50px; 
-            position: relative; z-index: 1; background-color: transparent; 
-        }}
+        /* CATALOGUE CONTENT STYLES */
+        .catalogue-content { 
+            padding: 10mm; 
+            display: block; 
+            position: relative; 
+            z-index: 9999; /* Force it to be on top of everything */
+            background-color: transparent; 
+        }
         
         .catalogue-heading {{ background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; page-break-inside: avoid; }} 
         .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 5mm; clear: both; font-family: serif; page-break-inside: avoid; }} 
@@ -1189,5 +1194,6 @@ if True:
                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
             with c_excel:
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
+
 
 
