@@ -1,0 +1,1765 @@
+# import streamlit as st
+# import pandas as pd
+# import pdfkit
+# import base64
+# from pathlib import Path
+# from datetime import datetime
+# import io
+# import os
+# import json
+# import numpy as np 
+# import time 
+# import uuid 
+
+# # --- 0. AUTO-FIX FOR LIGHT THEME (The "Silver Bullet" Fix) ---
+# def force_light_theme_setup():
+#     """
+#     Automatically creates a .streamlit/config.toml file to force the app
+#     into Light Mode. This fixes the dark table issue in st.data_editor.
+#     """
+#     config_dir = ".streamlit"
+#     config_path = os.path.join(config_dir, "config.toml")
+    
+#     # 1. Create the hidden folder if it doesn't exist
+#     if not os.path.exists(config_dir):
+#         os.makedirs(config_dir)
+        
+#     # 2. Create the config file if it doesn't exist
+#     # This tells Streamlit: "I am a Light Mode app, render tables in white."
+#     if not os.path.exists(config_path):
+#         theme_content = """
+# [theme]
+# base="light"
+# primaryColor="#007bff"
+# backgroundColor="#ffffff"
+# secondaryBackgroundColor="#f0f2f6"
+# textColor="#000000"
+# font="sans serif"
+#         """
+#         with open(config_path, "w") as f:
+#             f.write(theme_content.strip())
+#         # We print to console so you know it worked
+#         print("✅ Light Theme Config Auto-Created. Please restart the app for the table to turn white.")
+
+# # Execute the setup before anything else
+# force_light_theme_setup()
+
+
+# # --- 1. CONFIGURATION & AUTH ---
+# def check_password():
+#     """Checks the password stored in st.secrets or an environment variable."""
+#     def password_entered():
+#         if st.session_state.get("password") and ("PASSWORD" in st.secrets and st.session_state["password"] == st.secrets["PASSWORD"]):
+#             st.session_state["password_correct"] = True
+#             del st.session_state["password"]
+#         elif st.session_state.get("password") and (os.environ.get("APP_PASSWORD") and st.session_state["password"] == os.environ.get("APP_PASSWORD")):
+#             st.session_state["password_correct"] = True
+#             del st.session_state["password"]
+#         else:
+#             st.session_state["password_correct"] = False
+
+#     if st.session_state.get("password_correct", False):
+#         return True
+        
+#     st.text_input("Enter Password", type="password", on_change=password_entered, key="password")
+#     if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+#         st.error("😕 Wrong password")
+#         return False
+
+
+# # Only run the app AFTER password
+# if check_password():
+
+#     st.set_page_config(page_title="HEM PRODUCT CATALOGUE", page_icon="🛍️", layout="wide")
+
+#     # =========================================================================
+#     # --- GLOBAL THEME OVERRIDE ---
+#     # =========================================================================
+#     st.markdown("""
+#         <style>
+#             /* 1. GENERAL APP STYLING (Redundant but safe to keep) */
+#             .stApp { background-color: #ffffff !important; color: #000000 !important; }
+#             h1, h2, h3, h4, h5, h6, p, span, div, li, .stMarkdown, label, div[data-testid="stText"] { color: #000000 !important; }
+#             hr { border-color: #e9ecef !important; }
+
+#             /* 2. SPECIFIC FIX FOR DATA EDITOR (Review Cart) */
+#             /* In case the config.toml hasn't loaded yet, we try to force it here too */
+#             div[data-testid="stDataEditor"] {
+#                 background-color: #ffffff !important;
+#                 border: 1px solid #ced4da;
+#                 border-radius: 5px;
+#             }
+#             div[data-testid="stDataEditor"] div {
+#                 color: #000000 !important;
+#             }
+
+#             /* DROPDOWN MENU COLORS */
+#             div[data-baseweb="popover"], div[data-baseweb="popover"] > div { background-color: #ffffff !important; }
+#             ul[data-baseweb="menu"], div[data-baseweb="menu"] { background-color: #ffffff !important; }
+#             li[role="option"], div[role="option"] { background-color: #ffffff !important; color: #000000 !important; }
+#             li[role="option"] span, div[role="option"] span { color: #000000 !important; }
+#             li[role="option"][aria-selected="true"], li[role="option"]:hover { background-color: #007bff !important; color: #ffffff !important; }
+#             li[role="option"]:hover span { color: #ffffff !important; }
+
+#             /* INPUT BOXES */
+#             .stSelectbox div[data-baseweb="select"] > div:first-child,
+#             .stMultiSelect div[data-baseweb="select"] > div:first-child { background-color: #ffffff !important; border-color: #000000 !important; color: #000000 !important; }
+#             .stSelectbox div[data-baseweb="select"] div { color: #000000 !important; }
+#             .stSelectbox div[data-baseweb="select"] svg { fill: #000000 !important; }
+#             .stMultiSelect div[data-baseweb="tag"] { background-color: #007bff !important; }
+#             .stMultiSelect div[data-baseweb="tag"] span { color: #ffffff !important; }
+#             [data-testid="stTextInput"] input { background-color: #ffffff !important; border-color: #000000 !important; color: #000000 !important; }
+            
+#             /* TABS & BUTTONS */
+#             div[data-testid="stTabs"] button { background-color: #f8f9fa !important; color: #000000 !important; border: 1px solid #ced4da !important; }
+#             div[data-testid="stTabs"] button[aria-selected="true"] { background-color: #007bff !important; color: #ffffff !important; }
+#             div[data-testid="stTabs"] button[aria-selected="true"] p { color: #ffffff !important; }
+#             [data-testid="stButton"] button[kind="primary"] { background-color: #007bff !important; color: #ffffff !important; }
+#             [data-testid="stButton"] button[kind="secondary"] { background-color: #ffffff !important; color: #000000 !important; border-color: #000000 !important; }
+            
+#             /* LIST HEADERS */
+#             div.stMarkdown > .category-list-header { background-color: #007bff !important; color: #ffffff !important; font-size: 20px; font-weight: bold; padding: 5px 10px; margin-top: 20px; border-radius: 4px; }
+#             div.stMarkdown > .subcategory-list-header { background-color: #f8f9fa !important; color: #000000 !important; font-size: 16px; font-weight: bold; padding: 3px 10px; margin-top: 15px; border-radius: 4px; border: 1px solid #ced4da !important; }
+#         </style>
+#     """, unsafe_allow_html=True)
+    
+#     # --- PATH SETUP ---
+#     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+#     LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
+#     TEMPLATES_DIR = os.path.join(BASE_DIR, "templates") 
+#     WKHTML_PATH = os.path.join(BASE_DIR, "bin", "wkhtmltopdf") 
+#     SAVED_TEMPLATES_FILE = os.path.join(BASE_DIR, "saved_templates.json")
+    
+#     # --- IMAGES ---
+#     STORY_IMG_1_PATH = os.path.join(BASE_DIR, "assets", "2.1 page of pdf.jpg")
+#     STORY_IMG_2_PATH = os.path.join(BASE_DIR, "assets", "2.2 page of pdf.jpg") 
+#     COVER_IMG_PATH = os.path.join(BASE_DIR, "assets", "cover page.png")
+#     PRODUCT_INTRO_IMG_PATH = os.path.join(BASE_DIR, "assets", "product_intro.jpg")
+    
+#     # --- WATERMARK IMAGE PATH ---
+#     WATERMARK_IMG_PATH = os.path.join(BASE_DIR, "assets", "watermark.png") 
+
+#     IMAGE_DIR = os.path.join(BASE_DIR, "images") 
+
+#     CATALOGUE_PATHS = {
+#         "HEM Product Catalogue": os.path.join(BASE_DIR, "Hem catalogue.xlsx"),
+#         "Sacred Elements Catalogue": os.path.join(BASE_DIR, "SacredElement.xlsx"),
+#         "Pooja Oil Catalogue": os.path.join(BASE_DIR, "Pooja Oil Catalogue.xlsx"),
+#         "Candle Catalogue": os.path.join(BASE_DIR, "Candle Catalogue.xlsx"),
+#     }
+
+#     # --- CASE SIZE LOADING ---
+#     CASE_SIZE_PATH = os.path.join(BASE_DIR, "Case Size.xlsx")
+#     case_size_map = {}
+    
+#     if os.path.exists(CASE_SIZE_PATH):
+#         try:
+#             cs_df = pd.read_excel(CASE_SIZE_PATH, header=0, dtype=str)
+#             cs_df.columns = [c.strip() for c in cs_df.columns]
+            
+#             for _, row in cs_df.iterrows():
+#                 cat_name = str(row.iloc[0]).strip()
+#                 desc_text = str(row.iloc[1]).strip() if len(row) > 1 else ""
+                
+#                 case_size_map[cat_name] = {
+#                     'desc': desc_text,
+#                     'data': row.to_dict()
+#                 }
+#         except Exception as e:
+#             st.error(f"Error loading Case Size file: {e}")
+    
+#     GLOBAL_COLUMN_MAPPING = {
+#         "Category": "Category", "Sub-Category": "Subcategory", "Item Name": "ItemName",
+#         "ItemName": "ItemName", "Description": "Fragrance", "SKU Code": "SKU Code"
+#     }
+    
+#     NO_SELECTION_PLACEHOLDER = "Select..." 
+
+#     # --- HELPER FUNCTIONS ---
+#     def create_safe_id(text):
+#         return "".join(c for c in text.replace(' ', '-').lower() if c.isalnum() or c == '-').replace('--', '-')
+
+#     def get_image_as_base64_str(path):
+#         if path is None or not Path(path).exists(): return ""
+#         try:
+#             with Path(path).open("rb") as f: return base64.b64encode(f.read()).decode()
+#         except Exception: return ""
+    
+#     def load_template_file(filename):
+#         path = os.path.join(TEMPLATES_DIR, filename)
+#         try:
+#             with open(path, 'r', encoding='utf-8') as f: return f.read()
+#         except: return None
+
+#     # --- STRING CLEANER FOR MATCHING ---
+#     # This removes words like "catalogue", "image", "product" to match "HEM Catalogue Image" with "HEM Product Catalogue"
+#     def clean_key(text):
+#         if not isinstance(text, str): return ""
+#         # Lowercase and remove spaces/underscores
+#         text = text.lower().strip().replace(' ', '').replace('_', '').replace('-', '')
+#         # Remove common filler words
+#         for stop_word in ['catalogue', 'image', 'images', 'product', 'products', 'img']:
+#             text = text.replace(stop_word, '')
+#         return text
+
+#     CSS_STYLES = load_template_file("style.css") or ""
+    
+#     # --- UPDATED: Font size reduced to 9pt ---
+#     PRODUCT_CARD_TEMPLATE = """
+#     <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; position: relative;">
+#         <div style="position: absolute; top: -1px; left: -1px; width: 20px; height: 20px; border-top: 5px solid #E5C384; border-left: 5px solid #E5C384; border-radius: 5px 0 0 0;"></div>
+#         <div style="position: absolute; top: -1px; right: -1px; width: 20px; height: 20px; border-top: 5px solid #E5C384; border-right: 5px solid #E5C384; border-radius: 0 5px 0 0;"></div>
+#         <div style="height: 120px; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 5px; border: 1px solid #ddd; background-color: white; padding: 5px;">
+#             {image_html}
+#         </div>
+#         <div style="text-align: center; padding: 5px 0;">
+#             <h4 style="margin: 0; font-size: 9pt; color: #000; overflow: hidden; height: 30px; line-height: 1.2; font-weight: bold; font-family: serif;">{item_name}</h4>
+#         </div>
+#     </div>
+#     """
+
+#     CONFIG = None
+#     try:
+#         paths_to_check = [
+#             r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe",
+#             r"C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe",
+#             os.path.join(BASE_DIR, "bin", "wkhtmltopdf.exe")
+#         ]
+#         found_path = None
+#         for path in paths_to_check:
+#             if os.path.exists(path):
+#                 found_path = path
+#                 break
+#         if found_path:
+#             CONFIG = pdfkit.configuration(wkhtmltopdf=found_path)
+#     except Exception: pass 
+
+#     # --- TEMPLATE MANAGEMENT ---
+#     def load_saved_templates():
+#         if not os.path.exists(SAVED_TEMPLATES_FILE): return {}
+#         try: 
+#             with open(SAVED_TEMPLATES_FILE, 'r') as f: return json.load(f)
+#         except: return {}
+
+#     def save_template_to_disk(name, cart_items):
+#         templates = load_saved_templates()
+#         templates[name] = cart_items
+#         with open(SAVED_TEMPLATES_FILE, 'w') as f: json.dump(templates, f, indent=4)
+#         st.toast(f"Template '{name}' saved!", icon="💾")
+    
+#     def delete_template_from_disk(name):
+#         templates = load_saved_templates()
+#         if name in templates:
+#             del templates[name]
+#             with open(SAVED_TEMPLATES_FILE, 'w') as f: json.dump(templates, f, indent=4)
+#             st.toast(f"Template '{name}' deleted.", icon="🗑️")
+
+#     # --- DATA LOADING (UPDATED WITH 3-LEVEL FOLDER SUPPORT) ---
+#     @st.cache_data
+#     def load_data():
+#         all_data = []
+#         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID']
+        
+#         # -------------------------------------------------------------
+#         # 1. NEW IMAGE LOADING LOGIC (Nested Folders)
+#         # -------------------------------------------------------------
+#         image_map = {} # Structure: { 'catalogue_clean_key': { 'category_clean_key': { 'item_clean_key': 'path' } } }
+        
+#         debug_logs = []
+
+#         if not os.path.exists(IMAGE_DIR):
+#             st.warning(f"Image directory not found: {IMAGE_DIR}")
+#         else:
+#             # 1. Level: Catalogue Folders
+#             for cat_folder in os.listdir(IMAGE_DIR):
+#                 cat_folder_path = os.path.join(IMAGE_DIR, cat_folder)
+#                 if os.path.isdir(cat_folder_path):
+#                     # Clean key: "Hem Catalogue Image" -> "hem"
+#                     c_key = clean_key(cat_folder)
+#                     if c_key not in image_map: image_map[c_key] = {}
+                    
+#                     # 2. Level: Category Folders
+#                     for sub_folder in os.listdir(cat_folder_path):
+#                         sub_folder_path = os.path.join(cat_folder_path, sub_folder)
+#                         if os.path.isdir(sub_folder_path):
+#                             # Clean key: "Incense Cones" -> "incensecones"
+#                             s_key = clean_key(sub_folder)
+#                             if s_key not in image_map[c_key]: image_map[c_key][s_key] = {}
+                            
+#                             # 3. Level: Image Files
+#                             for img_file in os.listdir(sub_folder_path):
+#                                 if img_file.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+#                                     # Clean key: "Lavender 100g.jpg" -> "lavender100g"
+#                                     i_key = clean_key(img_file.rsplit('.', 1)[0])
+#                                     image_map[c_key][s_key][i_key] = os.path.join(sub_folder_path, img_file)
+            
+#             debug_logs.append(f"Image Map Keys (Catalogues Found): {list(image_map.keys())}")
+
+#         # 2. LOAD EXCEL FILES
+#         for catalogue_name, excel_path in CATALOGUE_PATHS.items():
+#             if not os.path.exists(excel_path): continue
+#             try:
+#                 df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
+#                 df.columns = [str(c).strip() for c in df.columns]
+                
+#                 df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
+                
+#                 df['Catalogue'] = catalogue_name
+#                 df['Packaging'] = 'Default Packaging'
+#                 df["ImageB64"] = "" 
+#                 df["ProductID"] = ""
+
+#                 for col in required_output_cols:
+#                     if col not in df.columns: 
+#                         if col == 'ImageB64': df[col] = ''
+#                         elif col == 'ProductID': df[col] = ''
+#                         else: df[col] = 'N/A' if col in ['Category', 'Subcategory', 'Fragrance'] else ''
+                
+#                 df['Category'] = df['Category'].astype(str).str.strip().fillna('Uncategorized')
+#                 df['Subcategory'] = df['Subcategory'].astype(str).str.strip().fillna('N/A')
+#                 df['ItemName'] = df['ItemName'].astype(str).str.strip().fillna('No Name')
+                
+#                 for col in ['SKU Code', 'ItemName', 'Category', 'Subcategory']:
+#                     if col in df.columns:
+#                         df[col] = df[col].astype(str).str.replace(r'[\r\n\t]', '', regex=True).str.strip()
+
+#                 df.reset_index(inplace=True)
+#                 df['ProductID'] = df.apply(lambda row: f"PID_{str(uuid.uuid4())[:8]}", axis=1)
+
+#                 if 'SKU Code' not in df.columns or df['SKU Code'].isnull().all() or (df['SKU Code'] == 'nan').any():
+#                     df['SKU Code'] = df['ProductID']
+
+#                 # 3. MATCHING LOGIC (Using Clean Keys)
+#                 if image_map:
+#                     # Clean the Catalogue Name from Excel (e.g., "HEM Product Catalogue" -> "hem")
+#                     excel_cat_key = clean_key(catalogue_name)
+                    
+#                     # Find matching Catalogue Key in Folder Map
+#                     matched_cat_map = None
+#                     if excel_cat_key in image_map:
+#                         matched_cat_map = image_map[excel_cat_key]
+#                     else:
+#                         # Try fuzzy find if exact key fails
+#                         for k in image_map.keys():
+#                             if k in excel_cat_key or excel_cat_key in k:
+#                                 matched_cat_map = image_map[k]
+#                                 break
+                    
+#                     if matched_cat_map:
+#                         for index, row in df.iterrows():
+#                             # Clean Category and Item Names from Excel
+#                             row_cat_key = clean_key(row['Category'])
+#                             row_item_key = clean_key(row['ItemName'])
+                            
+#                             found_path = None
+                            
+#                             # 1. Try finding Category
+#                             matched_sub_map = None
+#                             if row_cat_key in matched_cat_map:
+#                                 matched_sub_map = matched_cat_map[row_cat_key]
+#                             else:
+#                                 # Fuzzy Category
+#                                 for k in matched_cat_map.keys():
+#                                     if k in row_cat_key or row_cat_key in k:
+#                                         matched_sub_map = matched_cat_map[k]
+#                                         break
+                            
+#                             # 2. Try finding Item
+#                             if matched_sub_map:
+#                                 if row_item_key in matched_sub_map:
+#                                     found_path = matched_sub_map[row_item_key]
+#                                 else:
+#                                     # Fuzzy Item (check if item key is inside file name key)
+#                                     for k, path in matched_sub_map.items():
+#                                         if row_item_key in k or k in row_item_key:
+#                                             found_path = path
+#                                             break
+
+#                             # 3. Convert to Base64
+#                             if found_path:
+#                                 b64_string = get_image_as_base64_str(found_path) 
+#                                 if b64_string: 
+#                                     df.loc[index, "ImageB64"] = b64_string
+                
+#                 df.drop(columns=['index'], inplace=True, errors='ignore')
+#                 all_data.append(df[required_output_cols])
+#             except Exception as e: 
+#                 st.error(f"Error processing catalogue {catalogue_name}: {e}")
+#                 continue 
+        
+#         st.session_state['debug_logs'] = debug_logs
+#         if not all_data: return pd.DataFrame(columns=required_output_cols)
+#         full_df = pd.concat(all_data, ignore_index=True)
+#         st.session_state['master_pid_map'] = {row['ProductID']: row.to_dict() for _, row in full_df.iterrows()}
+#         return full_df
+
+
+#     # --- CART & SESSION STATE LOGIC ---
+#     if "cart" not in st.session_state: st.session_state.cart = []
+#     if "gen_pdf_bytes" not in st.session_state: st.session_state.gen_pdf_bytes = None
+#     if "gen_excel_bytes" not in st.session_state: st.session_state.gen_excel_bytes = None
+    
+#     if 'selected_catalogue_dropdown' not in st.session_state: st.session_state.selected_catalogue_dropdown = NO_SELECTION_PLACEHOLDER
+#     if 'selected_categories_multi' not in st.session_state: st.session_state.selected_categories_multi = []
+#     if 'selected_subcategories_multi' not in st.session_state: st.session_state.selected_subcategories_multi = []
+#     if 'item_search_query' not in st.session_state: st.session_state.item_search_query = ""
+#     if 'category_multiselect_prev' not in st.session_state: st.session_state['category_multiselect_prev'] = []
+#     if 'master_pid_map' not in st.session_state: st.session_state['master_pid_map'] = {}
+
+
+#     def add_to_cart(selected_df):
+#         current_pids = {item["ProductID"] for item in st.session_state.cart}
+#         new_items = []
+#         columns_to_keep = ['SKU Code', 'ItemName', 'Category', 'Subcategory', 'Fragrance', 'Packaging', 'SerialNo', 'ImageB64', 'Catalogue', 'ProductID']
+        
+#         if isinstance(selected_df, pd.Series): selected_df = pd.DataFrame([selected_df])
+            
+#         for _, row in selected_df.iterrows():
+#             if row.get("ProductID") and row["ProductID"] not in current_pids:
+#                 new_items.append({col: row.get(col, '') for col in columns_to_keep})
+#         if new_items:
+#             st.session_state.cart.extend(new_items)
+#             st.session_state.gen_pdf_bytes = None
+#             st.session_state.gen_excel_bytes = None
+#             st.toast(f"Added {len(new_items)} items to cart!", icon="🛒")
+
+#     def remove_from_cart(pids_to_remove):
+#         if pids_to_remove:
+#             st.session_state.cart = [i for i in st.session_state.cart if i.get("ProductID") not in pids_to_remove]
+#         st.session_state.gen_pdf_bytes = None
+#         st.session_state.gen_excel_bytes = None
+        
+#     def add_selected_visible_to_cart(df_visible):
+#         pid_map = st.session_state.get('master_pid_map', {})
+#         visible_pids = set(df_visible['ProductID'].tolist())
+#         columns_to_keep = ['SKU Code', 'ItemName', 'Category', 'Subcategory', 'Fragrance', 'Packaging', 'SerialNo', 'ImageB64', 'Catalogue', 'ProductID']
+#         current_cart_pids = {item["ProductID"] for item in st.session_state.cart if "ProductID" in item}
+#         added_count = 0
+#         new_items = []
+        
+#         for key, is_checked in st.session_state.items():
+#             if key.startswith("checkbox_") and is_checked:
+#                 pid = key.replace("checkbox_", "")
+#                 if pid not in visible_pids: continue
+#                 product_data = pid_map.get(pid)
+#                 if product_data and pid not in current_cart_pids:
+#                     row_series = pd.Series(product_data) 
+#                     new_item = {col: row_series.get(col, '') for col in columns_to_keep}
+#                     new_items.append(new_item)
+#                     added_count += 1
+#         if new_items:
+#             st.session_state.cart.extend(new_items)
+#             st.session_state.gen_pdf_bytes = None
+#             st.session_state.gen_excel_bytes = None
+#             st.toast(f"Added {added_count} selected items to cart!", icon="🛒")
+#         else: st.toast("No items selected.", icon="ℹ️")
+
+#     def display_product_list(df_to_show):
+#         selected_pids = {item.get("ProductID") for item in st.session_state.cart if "ProductID" in item}
+#         if st.session_state.item_search_query:
+#             query = st.session_state.item_search_query.lower()
+#             df_to_show = df_to_show[
+#                 df_to_show['ItemName'].str.lower().str.contains(query, na=False) |
+#                 df_to_show['Fragrance'].str.lower().str.contains(query, na=False) |
+#                 df_to_show['SKU Code'].str.lower().str.contains(query, na=False)
+#             ]
+        
+#         df_display = df_to_show.head(100).sort_values(['Category', 'Subcategory', 'ItemName']).reset_index(drop=False)
+#         st.markdown(f"**Showing {len(df_display)} of {len(df_to_show)} items** (Max 100 displayed)")
+
+#         if df_display.empty: 
+#             st.info("No products match filters/search.")
+#             return
+
+#         grouped_by_category = df_display.groupby('Category')
+#         for category, cat_group_df in grouped_by_category:
+#             st.markdown(f"<div class='category-list-header'>{category}</div>", unsafe_allow_html=True)
+#             for subcategory, subcat_group_df in cat_group_df.groupby('Subcategory'):
+#                 if subcategory.strip().upper() != 'N/A': 
+#                     st.markdown(f"<div class='subcategory-list-header'>{subcategory}</div>", unsafe_allow_html=True)
+                
+#                 col_name, col_desc, col_check = st.columns([4, 5, 1])
+#                 col_name.markdown('**Product Name**')
+#                 col_desc.markdown('**Description**')
+#                 col_check.markdown('**Select**')
+#                 st.markdown("<hr style='margin:0 0 5px 0; border-color:#ddd;'>", unsafe_allow_html=True) 
+                
+#                 for idx, row in subcat_group_df.iterrows():
+#                     pid = row['ProductID']
+#                     unique_key = f"checkbox_{pid}" 
+#                     initial_checked = pid in selected_pids
+#                     with col_name: st.markdown(f"**{row['ItemName']}**")
+#                     with col_desc: st.markdown(f"<span style='color:#333; font-size:12px;'>{row.get('Fragrance', 'N/A')}</span>", unsafe_allow_html=True)
+#                     with col_check: st.checkbox("Select", value=initial_checked, key=unique_key, label_visibility="hidden")
+#         if len(df_to_show) > 100: st.info(f"Showing 100 of {len(df_to_show)} items matching filters.")
+
+#     def clear_filters_dropdown():
+#         st.session_state.selected_catalogue_dropdown = NO_SELECTION_PLACEHOLDER
+#         st.session_state.selected_categories_multi = []
+#         st.session_state.selected_subcategories_multi = []
+#         st.session_state.item_search_query = ""
+#         st.session_state['category_multiselect_prev'] = [] 
+#         if "item_search_input" in st.session_state: del st.session_state["item_search_input"] 
+#         if "category_multiselect" in st.session_state: del st.session_state["category_multiselect"]
+#         if "subcategory_multiselect" in st.session_state: del st.session_state["subcategory_multiselect"]
+#         st.rerun()
+
+#     # =========================================================
+#     # --- PDF GENERATION FUNCTIONS ---
+#     # ========================================================= 
+
+#     # --- MODIFIED: REMOVED VISION, MISSION, AND IMAGE 2 ---
+#     def generate_story_html(story_img_1_b64):
+#         text_block_1 = """HEM Corporation is amongst top global leaders in the manufacturing and export of perfumed agarbattis. For over three decades now we have been parcelling out high-quality masala sticks, agarbattis, dhoops, and cones to our customers in more than 70 countries. We are known and established for our superior quality products.<br><br>HEM has been showered with love and accolades all across the globe for its diverse range of products. This makes us the most preferred brand the world over. HEM has been awarded as the ‘Top Exporters’ brand, for incense sticks by the ‘Export Promotion Council for Handicraft’ (EPCH) for three consecutive years from 2008 till 2011.<br>We have also been awarded “Niryat Shree” (Export) Silver Trophy in the Handicraft category by ‘Federation of Indian Export Organization’ (FIEO). The award was presented to us by the then Honourable President of India, late Shri Pranab Mukherjee."""
+#         text_journey_1 = """From a brand that was founded by three brothers in 1983, HEM Fragrances has come a long way. HEM started as a simple incense store offering products like masala agarbatti, thuribles, incense burner and dhoops. However, with time, there was a huge evolution in the world of fragrances much that the customers' needs also started changing. HEM incense can be experienced not only to provide you with rich aromatic experience but also create a perfect ambience for your daily prayers, meditation, and yoga.<br><br>The concept of aromatherapy massage, burning incense sticks and incense herbs for spiritual practices, using aromatherapy diffuser oils to promote healing and relaxation or using palo santo incense to purify and cleanse a space became popular around the world.<br><br>So, while we remained focused on creating our signature line of products, especially the ‘HEM Precious’ range which is a premium flagship collection, there was a dire need to expand our portfolio to meet increasing customer demands."""
+        
+#         # --- FIXED: ADDED OVERFLOW HIDDEN AND LINE-HEIGHT 0 TO PREVENT BLANK PAGE ---
+#         html = f"""
+#         <div class="story-page" style="page-break-after: always; padding: 25px 50px; font-family: sans-serif; overflow: hidden; height: 100vh;">
+#             <h1 style="text-align: center; color: #333; font-size: 28pt; margin-bottom: 20px;">Our Journey</h1>
+#             <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: justify;">{text_block_1}</div>
+#             <div style="margin-bottom: 30px; overflow: auto; clear: both;">
+#                 <div style="float: left; width: 50%; margin-right: 20px; font-size: 11pt; line-height: 1.6; text-align: justify;">{text_journey_1}</div>
+#                 <div style="float: right; width: 45%; text-align: center;">
+#                     <img src="data:image/png;base64,{story_img_1_b64}" style="max-width: 100%; height: auto; border: 1px solid #eee;" alt="Incense Ceremony Image">
+#                 </div>
+#             </div>
+            
+#             <h2 style="text-align: center; font-size: 14pt; margin-top: 40px; clear: both;">Innovation, Creativity, Sustainability</h2>
+#         </div>
+#         """
+#         return html
+
+#     def generate_table_of_contents_html(df_sorted):
+#         # --- FIXED: REMOVED BACKGROUND COLOR SO WATERMARK SHOWS THROUGH ---
+#         toc_html = """
+#         <div id="main-index" class="toc-page" style="padding: 20px 50px; font-family: sans-serif; overflow: hidden;">
+#             <h1 style="text-align: center; color: #333; font-size: 30pt; margin-bottom: 30px; border-bottom: 2px solid #E5C384; display: inline-block; padding: 0 20px 5px 20px; font-family: serif;">INDEX</h1>
+#             <div style="column-count: 2; column-gap: 40px; font-size: 11pt; line-height: 1.8;">
+#         """
+        
+#         # Get unique entries for the index
+#         index_df = df_sorted[['Catalogue', 'Category', 'Subcategory']].drop_duplicates().sort_values(['Catalogue', 'Category', 'Subcategory'])
+
+#         current_catalogue = None
+#         current_category = None
+#         grouped_by_catalogue = index_df.groupby('Catalogue')
+
+#         for catalogue, cat_group_df in grouped_by_catalogue:
+#             if catalogue != current_catalogue:
+#                 current_catalogue = catalogue
+#                 # Catalogue Header
+#                 toc_html += f'<h2 style="color: #f63366; font-size: 16pt; margin-top: 15px; padding-bottom: 3px; font-weight: bold; border-bottom: 1px dotted #ccc;">{catalogue}</h2>'
+#                 current_category = None 
+
+#             grouped_by_category = cat_group_df.groupby('Category')
+
+#             for category, subcat_group_df in grouped_by_category:
+#                 if category != current_category:
+#                     current_category = category
+#                     safe_category_id = create_safe_id(current_category)
+                    
+#                     # 1. ALWAYS Render the Category Name (Black Box)
+#                     category_entry = f"""
+#                     <div style="background-color: #333; color: white; padding: 8px 12px; margin-bottom: 5px; margin-top: 10px; border-radius: 2px; font-weight: bold; font-family: sans-serif;">
+#                         <a href="#category-{safe_category_id}" style="color: white; text-decoration: none; display: block;">{category.upper()}</a>
+#                     </div>
+#                     """
+#                     toc_html += category_entry
+                    
+#                     # 2. FILTER Subcategories (Remove 'nan', 'N/A', etc.)
+#                     raw_subcats = subcat_group_df['Subcategory'].unique()
+#                     valid_subcategories = []
+                    
+#                     # List of values to hide
+#                     ignore_list = ['nan', 'n/a', 'none', '', '0', 'null']
+                    
+#                     for s in raw_subcats:
+#                         s_str = str(s).strip()
+#                         # specific check: if the lowercase version is NOT in the ignore list
+#                         if s_str.lower() not in ignore_list:
+#                             valid_subcategories.append(s_str)
+                    
+#                     valid_subcategories.sort()
+
+#                     # 3. ONLY Render the list if there are valid subcategories left
+#                     if valid_subcategories:
+#                         toc_html += '<ul style="list-style: none; margin-left: 15px; padding: 0; font-size: 10pt; line-height: 1.4;">'
+#                         for subcategory in valid_subcategories: 
+#                             toc_html += f'<li style="margin-bottom: 2px; color: #555;">&mdash; {subcategory}</li>'
+#                         toc_html += '</ul>'
+        
+#         toc_html += """</div><div style="margin-top: 40px; text-align: center; font-style: italic; color: #777;">*Note: Clickable links rely on PDF reader functionality.*</div></div>"""
+#         return toc_html
+#     # --- PDF GENERATOR ---
+#     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_size_map):
+#         global CSS_STYLES, PRODUCT_CARD_TEMPLATE, COVER_IMG_PATH, WATERMARK_IMG_PATH
+#         if CSS_STYLES is None: CSS_STYLES = ""
+#         current_catalogue = None
+#         current_category = None
+#         cover_bg_b64 = get_image_as_base64_str(COVER_IMG_PATH)
+        
+#         # --- NEW: LOAD WATERMARK ---
+#         watermark_b64 = get_image_as_base64_str(WATERMARK_IMG_PATH)
+        
+#         # --- FIXED: ADDED WATERMARK TO BODY AND EXCEPTION FOR COVER PAGE ---
+#         GROUPING_CSS = f"""
+#             @page {{ 
+#                 size: A4; 
+#                 margin: 0; 
+#             }}
+#             body, html {{ 
+#                 margin: 0 !important; 
+#                 padding: 0 !important; 
+#                 width: 100% !important; 
+#                 height: 100% !important;
+#             }}
+            
+#             /* APPLY WATERMARK TO BODY */
+#             body {{
+#                 background-image: url('data:image/jpeg;base64,{watermark_b64}');
+#                 background-repeat: repeat; 
+#                 background-size: cover; 
+#                 background-position: center;
+#             }}
+
+#             .catalogue-content {{ padding-left: 10mm; padding-right: 10mm; padding-top: 0px; }}
+#             .catalogue-heading, .category-heading, .case-size-info, .case-size-table {{ page-break-after: avoid; page-break-inside: avoid; padding-left: 5px; padding-right: 5px; }}
+#             .catalogue-heading {{ page-break-before: always; background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; }} 
+#             .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 15mm; clear: both; font-family: serif; }} 
+            
+#             .case-size-info {{ color: #555; font-size: 10pt; font-style: italic; margin-bottom: 5px; clear: both; font-family: sans-serif; }}
+            
+#             .case-size-table {{ width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 9pt; margin-bottom: 15px; clear: both; background-color: rgba(255,255,255,0.8); }}
+#             .case-size-table th {{ border: 1px solid #ddd; background-color: #f2f2f2; padding: 6px; text-align: center; font-weight: bold; font-size: 8pt; color: #333; }}
+#             .case-size-table td {{ border: 1px solid #ddd; padding: 6px; text-align: center; color: #444; }}
+
+#             /* FIXED: COVER PAGE HAS WHITE BG TO HIDE WATERMARK */
+#             .cover-page {{ 
+#                 height: 297mm; width: 210mm; display: block; position: relative; page-break-after: always; margin: 0; padding: 0; overflow: hidden; line-height: 0; 
+#                 background-color: #ffffff; 
+#                 z-index: 999;
+#             }}
+#             .cover-image-container {{ position: absolute; top: 0; left: 0; height: 100%; width: 100%; z-index: 1; }}
+#             .cover-image-container img {{ width: 100%; height: 100%; object-fit: cover; }}
+#             .cover-footer {{ position: absolute; bottom: 10px; width: 100%; text-align: center; z-index: 10; color: #555; font-size: 10pt; font-family: sans-serif; background-color: rgba(255, 255, 255, 0.6); padding: 5px 0; line-height: 1.5; }}
+#             .clearfix::after {{ content: ""; clear: both; display: table; }}
+#         """
+        
+#         full_css = CSS_STYLES + GROUPING_CSS
+#         html = f"<html><head><style>{full_css}</style></head><body style='margin: 0; padding: 0;'>"
+        
+#         # 1. Cover Page
+#         html += f"""<div class="cover-page"><div class="cover-image-container"><img src="data:image/png;base64,{cover_bg_b64}" alt="Cover Background"></div><div class="cover-footer">Prepared for: <strong>{customer_name}</strong> | Date: {datetime.now().strftime('%Y-%m-%d')}</div></div>"""
+        
+#         # 2. Story Page
+#         story_img_1_b64 = get_image_as_base64_str(STORY_IMG_1_PATH)
+#         html += generate_story_html(story_img_1_b64)
+
+#         # 3. Product Intro Page
+#         product_intro_b64 = get_image_as_base64_str(PRODUCT_INTRO_IMG_PATH)
+#         if product_intro_b64:
+#             # --- FIXED: ADDED OVERFLOW HIDDEN + LINE-HEIGHT 0 ---
+#             html += f"""
+#             <div class="product-intro-page" style="height: 297mm; width: 210mm; display: block; position: relative; page-break-after: always; margin: 0; padding: 0; overflow: hidden; line-height: 0;">
+#                 <img src="data:image/png;base64,{product_intro_b64}" style="width: 100%; height: 100%; object-fit: cover;" alt="Product Highlight">
+#             </div>
+#             """
+
+#         # 4. Table of Contents
+#         html += generate_table_of_contents_html(df_sorted)
+
+#         html += '<div class="catalogue-content clearfix">' 
+        
+#         # HELPER TO SAFELY GET VALUE FROM ROW DATA
+#         def get_val_fuzzy(row_data, keys_list):
+#             for k in keys_list:
+#                 for data_k in row_data.keys():
+#                     if k.lower() in data_k.lower():
+#                         return str(row_data[data_k])
+#             return "-"
+
+#         is_new_catalogue = False 
+
+#         for index, row in df_sorted.iterrows():
+#             if row['Catalogue'] != current_catalogue:
+#                 current_catalogue = row['Catalogue']
+#                 current_category = None
+#                 html += f'<div style="clear:both;"></div><h1 class="catalogue-heading">{current_catalogue}</h1>'
+#                 is_new_catalogue = True # Flag that we just started a catalogue
+
+#             if row['Category'] != current_category:
+#                 current_category = row['Category']
+#                 safe_category_id = create_safe_id(current_category)
+                
+#                 # --- NEW LOGIC: Page Break on Category ---
+#                 # If we just started a new catalogue (is_new_catalogue=True), the catalogue header 
+#                 # already pushed us to a new page, so we don't break again.
+#                 # Otherwise, we force a page break before the new category.
+#                 break_style = ""
+#                 if not is_new_catalogue:
+#                     break_style = 'style="page-break-before: always;"'
+                
+#                 is_new_catalogue = False # Reset the flag
+                
+#                 html += f'''
+#                 <div style="clear:both;"></div>
+#                 <h2 class="category-heading" id="category-{safe_category_id}" {break_style}>
+#                     <a href="#main-index" style="float: right; font-size: 10px; color: #555; text-decoration: none; font-weight: normal; font-family: sans-serif; margin-top: 4px;">BACK TO INDEX &uarr;</a>
+#                     {current_category}
+#                 </h2>
+#                 '''
+                
+#                 # --- PRINT Case Size Description AND Table ---
+#                 if current_category in case_size_map:
+#                     info = case_size_map[current_category]
+#                     desc = info.get('desc', '')
+#                     row_data = info.get('data', {})
+                    
+#                     if desc:
+#                         html += f'<div class="case-size-info"><strong>Case Size:</strong> {desc}</div>'
+                    
+#                     packing_val = get_val_fuzzy(row_data, ["Packing", "Master Ctn"])
+#                     gross_wt = get_val_fuzzy(row_data, ["Gross Wt", "Gross Weight"])
+#                     net_wt = get_val_fuzzy(row_data, ["Net Wt", "Net Weight"])
+#                     length = get_val_fuzzy(row_data, ["Length"])
+#                     breadth = get_val_fuzzy(row_data, ["Breadth", "Width"])
+#                     height = get_val_fuzzy(row_data, ["Height"])
+#                     cbm_val = get_val_fuzzy(row_data, ["CBM"])
+                    
+#                     html += f'''
+#                     <table class="case-size-table">
+#                         <tr>
+#                             <th>Packing per Master Ctn<br>(doz/box)</th>
+#                             <th>Gross Wt.<br>(Kg)</th>
+#                             <th>Net Wt.<br>(Kg)</th>
+#                             <th>Length<br>(Cm)</th>
+#                             <th>Breadth<br>(Cm)</th>
+#                             <th>Height<br>(Cm)</th>
+#                             <th>CBM</th>
+#                         </tr>
+#                         <tr>
+#                             <td>{packing_val}</td>
+#                             <td>{gross_wt}</td>
+#                             <td>{net_wt}</td>
+#                             <td>{length}</td>
+#                             <td>{breadth}</td>
+#                             <td>{height}</td>
+#                             <td>{cbm_val}</td>
+#                         </tr>
+#                     </table>
+#                     '''
+
+#             # --- RENDER PRODUCT CARD ---
+#             img_b64 = row["ImageB64"] 
+#             mime_type = 'image/jpeg' 
+#             if img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1: mime_type = 'image/png'
+#             image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
+            
+#             packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
+#             packaging_combined = packaging_text if packaging_text else ""
+#             sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
+#             fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
+#             fragrance_output = f"Fragrance: {', '.join(fragrance_list)}" if fragrance_list else "No fragrance info listed"
+#             item_name_output = row.get('ItemName', 'N/A')
+            
+#             if PRODUCT_CARD_TEMPLATE:
+#                 card_output = PRODUCT_CARD_TEMPLATE.format(image_html=image_html_content, item_name=item_name_output, packaging=packaging_combined, sku_info=sku_info, fragrance=fragrance_output)
+#                 html += card_output
+            
+#         html += '<div style="clear: both;"></div></div></body></html>'
+#         return html
+
+#     def generate_excel_file(df_sorted, customer_name):
+#         output = io.BytesIO()
+#         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+#             workbook = writer.book; worksheet = workbook.add_worksheet("Order Sheet")
+#             header = ['Ref', 'Category', 'Item Name', 'Description (Fragrance)', 'Unit', 'Order Quantity']
+#             fmt_head = workbook.add_format({'bold': True, 'bg_color': '#333', 'font_color': 'white', 'border': 1})
+#             worksheet.write_row(0, 0, header, fmt_head)
+#             for i, row in df_sorted.iterrows():
+#                 unit = 'Pcs'; order_qty = ''
+#                 worksheet.write_row(i+1, 0, [row['SKU Code'], row['Category'], row['ItemName'], row.get('Fragrance', ''), unit, order_qty]) 
+#         output.seek(0)
+#         return output.getvalue()
+
+#     # --- MAIN UI ---
+#     products_df = load_data()
+    
+#     with st.sidebar:
+#         st.header("📂 Manage Templates")
+#         with st.expander("Save Current Cart"):
+#             new_template_name = st.text_input("Template Name")
+#             if st.button("Save Template"):
+#                 if new_template_name: save_template_to_disk(new_template_name, st.session_state.cart)
+#         saved_templates = load_saved_templates()
+#         if saved_templates:
+#             with st.expander("Load Template"):
+#                 sel_temp = st.selectbox("Select Template", list(saved_templates.keys()))
+#                 if st.button("Load"):
+#                     st.session_state.cart = saved_templates[sel_temp]
+#                     st.toast(f"Template '{sel_temp}' loaded!", icon="✅")
+#                     st.rerun() 
+        
+#         # --- DEBUG SECTION TO CHECK IMAGES ---
+#         with st.expander("🛠️ Debug Image Info"):
+#             st.write("If images are missing, check these logs:")
+#             if 'debug_logs' in st.session_state:
+#                 for log in st.session_state['debug_logs']:
+#                     st.write(log)
+    
+#     st.title("HEM PRODUCT CATALOGUE")
+#     tab1, tab2, tab3 = st.tabs(["1. Filter", "2. Review", "3. Export"])
+    
+#     with tab1:
+#         if products_df.empty: st.error("No Data. Please check Excel file paths and content.")
+#         else:
+#             final_df = products_df.copy()
+#             col_filter, col_search = st.columns([1.5, 3])
+            
+#             with col_filter:
+#                 st.markdown('## FILTER')
+#                 catalogue_options = [NO_SELECTION_PLACEHOLDER] + sorted(products_df['Catalogue'].unique())
+#                 try: default_index_cat = catalogue_options.index(st.session_state.selected_catalogue_dropdown)
+#                 except ValueError: default_index_cat = 0 
+                
+#                 sel_cat = st.selectbox("Catalogue", catalogue_options, key="selected_catalogue_dropdown", index=default_index_cat) 
+#                 if sel_cat != NO_SELECTION_PLACEHOLDER: final_df = final_df[final_df['Catalogue'] == sel_cat]
+#                 else:
+#                     if st.session_state.selected_categories_multi: st.session_state.selected_categories_multi = []
+#                     if st.session_state.selected_subcategories_multi: st.session_state.selected_subcategories_multi = []
+
+#                 if sel_cat != NO_SELECTION_PLACEHOLDER:
+#                     category_options = sorted(final_df['Category'].unique())
+#                     valid_defaults_cat = [c for c in st.session_state.selected_categories_multi if c in category_options]
+#                     if valid_defaults_cat != st.session_state.selected_categories_multi: st.session_state.selected_categories_multi = valid_defaults_cat
+#                     sel_cats_multi = st.multiselect("Category", category_options, default=st.session_state.selected_categories_multi, key="category_multiselect")
+#                     st.session_state.selected_categories_multi = sel_cats_multi 
+#                     if sel_cats_multi: final_df = final_df[final_df['Category'].isin(sel_cats_multi)]
+#                 else: st.multiselect("Category", ["Select a Catalogue first"], disabled=True)
+                
+#                 if st.session_state.selected_categories_multi:
+#                     subcategory_options_all = sorted(final_df['Subcategory'].unique())
+#                     clean_subcat_options = [s for s in subcategory_options_all if s.strip().upper() != 'N/A']
+#                     is_new_category_selection = st.session_state.get('category_multiselect_prev', []) != sel_cats_multi
+#                     st.session_state['category_multiselect_prev'] = sel_cats_multi 
+#                     default_subcats = st.session_state.selected_subcategories_multi
+#                     if is_new_category_selection and clean_subcat_options: default_subcats = clean_subcat_options; st.session_state.selected_subcategories_multi = default_subcats
+#                     default_subcats = [s for s in default_subcats if s in clean_subcat_options]
+#                     sel_subcats_multi = st.multiselect("Sub-Category", clean_subcat_options, default=default_subcats, key="subcategory_multiselect")
+#                     st.session_state.selected_subcategories_multi = sel_subcats_multi 
+#                     if sel_subcats_multi: final_df = final_df[final_df['Subcategory'].isin(sel_subcats_multi) | (final_df['Subcategory'].str.upper() == 'N/A')]
+#                 elif sel_cat != NO_SELECTION_PLACEHOLDER: st.multiselect("Sub-Category", ["Select one or more Categories first"], disabled=True)
+#                 else: st.multiselect("Sub-Category", ["Select a Catalogue first"], disabled=True)
+
+#                 st.markdown("---")
+#                 def update_search(): st.session_state.item_search_query = st.session_state["item_search_input"]
+#                 st.text_input("Item/Product (Search)", value=st.session_state.item_search_query, key="item_search_input", on_change=update_search, placeholder="Search by Item Name, Fragrance, or SKU...")
+#                 st.markdown("---")
+
+#                 col_add_checked, col_add_all, col_clear = st.columns(3)
+#                 with col_add_checked: st.button("ADD SELECTED TO CART", on_click=lambda df=final_df: add_selected_visible_to_cart(df), key="add_checked_btn", disabled=final_df.empty, type="primary", use_container_width=True)
+#                 with col_add_all: st.button("ADD ALL FILTERED", on_click=lambda df=final_df: add_to_cart(df), key="select_all_btn_dropdown", disabled=final_df.empty, type="secondary", use_container_width=True)
+#                 with col_clear: st.button("CLEAR ALL FILTERS", on_click=clear_filters_dropdown, key="clear_all_filters_dropdown_btn", type="secondary", use_container_width=True)
+                
+#             with col_search:
+#                 st.markdown('## SEARCH RESULTS')
+#                 is_filtered_enough = (st.session_state.selected_catalogue_dropdown != NO_SELECTION_PLACEHOLDER and (st.session_state.selected_categories_multi or final_df['Category'].nunique() > 0))
+#                 if is_filtered_enough: display_product_list(final_df) 
+#                 else: st.info("Start by selecting a **Catalogue** and at least one **Category**.")
+
+#     with tab2:
+#         st.markdown('## Review Cart Items')
+#         if st.session_state.cart:
+#             cart_df = pd.DataFrame(st.session_state.cart)
+#             cart_df['Remove'] = False
+#             editable_df_view = cart_df[['ItemName', 'Category', 'Subcategory', 'SKU Code', 'Remove']]
+            
+#             # --- FIXED LOGIC: REMOVE BY INDEX ---
+#             edited_df = st.data_editor(
+#                 editable_df_view, 
+#                 column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False)}, 
+#                 hide_index=True, 
+#                 key="cart_data_editor_fixed"
+#             )
+            
+#             # Identify indices where 'Remove' is True
+#             indices_to_remove = edited_df[edited_df['Remove'] == True].index.tolist()
+            
+#             if indices_to_remove:
+#                 # Use those indices to find ProductIDs (safe against duplicate SKUs/Type mismatches)
+#                 pids_to_remove = cart_df.loc[indices_to_remove, 'ProductID'].tolist()
+#             else:
+#                 pids_to_remove = []
+
+#             c_remove, c_clear = st.columns([1, 1])
+#             with c_remove:
+#                 if st.button(f"Remove {len(pids_to_remove)} Selected Items", disabled=not pids_to_remove):
+#                     remove_from_cart(pids_to_remove)
+#                     st.rerun()
+#             with c_clear:
+#                 if st.button("Clear Cart"): 
+#                     st.session_state.cart = []
+#                     st.session_state.gen_pdf_bytes = None
+#                     st.session_state.gen_excel_bytes = None
+#                     st.rerun()
+#         else: st.info("Cart Empty")
+
+#     with tab3:
+#         st.markdown('## Generate & Export')
+#         if st.session_state.cart:
+#             name = st.text_input("Client Name", "Valued Client")
+#             if st.button("Generate Catalogue"):
+#                 cart_data = st.session_state.cart
+#                 if not cart_data: st.error("Cart is empty! Cannot generate PDF."); st.stop() 
+#                 schema_cols = ['Catalogue', 'Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'ImageB64', 'Packaging']
+#                 df_final = pd.DataFrame(cart_data)
+#                 for col in schema_cols: 
+#                     if col not in df_final.columns: df_final[col] = ''
+#                 df_final = df_final[schema_cols].sort_values(['Catalogue', 'Category', 'Subcategory'])
+#                 df_final['SerialNo'] = range(1, len(df_final)+1)
+#                 st.toast("Generating files...", icon="⏳")
+#                 st.session_state.gen_excel_bytes = generate_excel_file(df_final, name)
+#                 if CONFIG:
+#                     try:
+#                         logo = get_image_as_base64_str(LOGO_PATH) 
+#                         html = generate_pdf_html(df_final, name, logo, case_size_map)
+                        
+#                         options = {
+#                             'page-size': 'A4',
+#                             'margin-top': '0mm',
+#                             'margin-bottom': '0mm',
+#                             'margin-left': '0mm',
+#                             'margin-right': '0mm',
+#                             'disable-smart-shrinking': None, 
+#                             'enable-local-file-access': None, 
+#                             'print-media-type': '',
+#                             'encoding': "UTF-8"
+#                         }
+
+#                         st.session_state.gen_pdf_bytes = pdfkit.from_string(html, False, configuration=CONFIG, options=options)
+#                         st.toast("PDF and Excel generated!", icon="🎉")
+#                     except Exception as e: st.error(f"Error generating PDF. Is wkhtmltopdf installed? Error: {e}"); st.session_state.gen_pdf_bytes = None
+#                 else: st.warning("wkhtmltopdf configuration missing. Cannot generate PDF."); st.session_state.gen_pdf_bytes = None
+#             st.markdown("---")
+#             c_pdf, c_excel = st.columns(2)
+#             with c_pdf:
+#                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
+#             with c_excel:
+#                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
+#         else: st.info("Cart Empty. Add items in the Filter tab to generate a catalogue.")
+
+# --------------------------------------------------------------------------
+
+
+
+# case size code 
+
+
+
+import streamlit as st
+import pandas as pd
+import pdfkit
+import base64
+from pathlib import Path
+from datetime import datetime
+import io
+import os
+import json
+import numpy as np 
+import time 
+import uuid 
+
+# --- 1. CONFIGURATION & AUTH ---
+def check_password():
+    """Checks the password stored in st.secrets or an environment variable."""
+    def password_entered():
+        if st.session_state.get("password") and ("PASSWORD" in st.secrets and st.session_state["password"] == st.secrets["PASSWORD"]):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        elif st.session_state.get("password") and (os.environ.get("APP_PASSWORD") and st.session_state["password"] == os.environ.get("APP_PASSWORD")):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if st.session_state.get("password_correct", False):
+        return True
+
+    st.text_input("Enter Password", type="password", on_change=password_entered, key="password")
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("😕 Wrong password")
+    return False
+
+
+# Only run the app AFTER password
+if check_password():
+
+    st.set_page_config(page_title="HEM PRODUCT CATALOGUE", page_icon="🛍️", layout="wide")
+
+    # =========================================================================
+    # --- GLOBAL THEME OVERRIDE ---
+    # =========================================================================
+    st.markdown("""
+        <style>
+            .stApp { background-color: #ffffff !important; color: #000000 !important; }
+            h1, h2, h3, h4, h5, h6, p, span, div, li, .stMarkdown, label, div[data-testid="stText"] { color: #000000 !important; }
+            hr { border-color: #e9ecef !important; }
+
+            /* DROPDOWN MENU COLORS */
+            div[data-baseweb="popover"], div[data-baseweb="popover"] > div { background-color: #ffffff !important; }
+            ul[data-baseweb="menu"], div[data-baseweb="menu"] { background-color: #ffffff !important; }
+            li[role="option"], div[role="option"] { background-color: #ffffff !important; color: #000000 !important; }
+            li[role="option"] span, div[role="option"] span { color: #000000 !important; }
+            li[role="option"][aria-selected="true"], li[role="option"]:hover { background-color: #007bff !important; color: #ffffff !important; }
+            li[role="option"]:hover span { color: #ffffff !important; }
+
+            /* INPUT BOXES */
+            .stSelectbox div[data-baseweb="select"] > div:first-child,
+            .stMultiSelect div[data-baseweb="select"] > div:first-child { background-color: #ffffff !important; border-color: #000000 !important; color: #000000 !important; }
+            .stSelectbox div[data-baseweb="select"] div { color: #000000 !important; }
+            .stSelectbox div[data-baseweb="select"] svg { fill: #000000 !important; }
+            .stMultiSelect div[data-baseweb="tag"] { background-color: #007bff !important; }
+            .stMultiSelect div[data-baseweb="tag"] span { color: #ffffff !important; }
+            [data-testid="stTextInput"] input { background-color: #ffffff !important; border-color: #000000 !important; color: #000000 !important; }
+            
+            /* TABS & BUTTONS */
+            div[data-testid="stTabs"] button { background-color: #f8f9fa !important; color: #000000 !important; border: 1px solid #ced4da !important; }
+            div[data-testid="stTabs"] button[aria-selected="true"] { background-color: #007bff !important; color: #ffffff !important; }
+            div[data-testid="stTabs"] button[aria-selected="true"] p { color: #ffffff !important; }
+            [data-testid="stButton"] button[kind="primary"] { background-color: #007bff !important; color: #ffffff !important; }
+            [data-testid="stButton"] button[kind="secondary"] { background-color: #ffffff !important; color: #000000 !important; border-color: #000000 !important; }
+            
+            /* LIST HEADERS */
+            div.stMarkdown > .category-list-header { background-color: #007bff !important; color: #ffffff !important; font-size: 20px; font-weight: bold; padding: 5px 10px; margin-top: 20px; border-radius: 4px; }
+            div.stMarkdown > .subcategory-list-header { background-color: #f8f9fa !important; color: #000000 !important; font-size: 16px; font-weight: bold; padding: 3px 10px; margin-top: 15px; border-radius: 4px; border: 1px solid #ced4da !important; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # --- PATH SETUP ---
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
+    TEMPLATES_DIR = os.path.join(BASE_DIR, "templates") 
+    WKHTML_PATH = os.path.join(BASE_DIR, "bin", "wkhtmltopdf") 
+    SAVED_TEMPLATES_FILE = os.path.join(BASE_DIR, "saved_templates.json")
+    STORY_IMG_1_PATH = os.path.join(BASE_DIR, "assets", "2.1 page of pdf.jpg")
+    STORY_IMG_2_PATH = os.path.join(BASE_DIR, "assets", "2.2 page of pdf.jpg")
+    COVER_IMG_PATH = os.path.join(BASE_DIR, "assets", "cover page.png")
+    IMAGE_DIR = os.path.join(BASE_DIR, "images") 
+
+    CATALOGUE_PATHS = {
+        "HEM Product Catalogue": os.path.join(BASE_DIR, "Hem catalogue.xlsx"),
+        "Sacred Elements Catalogue": os.path.join(BASE_DIR, "SacredElement.xlsx"),
+        "Pooja Oil Catalogue": os.path.join(BASE_DIR, "Pooja Oil Catalogue.xlsx"),
+        "Candle Catalogue": os.path.join(BASE_DIR, "Candle Catalogue.xlsx"),
+    }
+
+    # --- UPDATED: CASE SIZE LOADING (READ ALL COLUMNS) ---
+    CASE_SIZE_PATH = os.path.join(BASE_DIR, "Case Size.xlsx")
+    case_size_map = {}
+    CS_DF_GLOBAL = None # New Global Variable to store the raw dataframe
+    
+    if os.path.exists(CASE_SIZE_PATH):
+        try:
+            # Load full Excel file
+            cs_df = pd.read_excel(CASE_SIZE_PATH, header=0, dtype=str)
+            cs_df.columns = [c.strip() for c in cs_df.columns]
+            
+            # Save raw dataframe for filtering later
+            CS_DF_GLOBAL = cs_df.copy()
+
+            # Create a dictionary where Key = Category Name
+            # Value = A dictionary containing 'desc' (Column B) and 'data' (The whole row)
+            for _, row in cs_df.iterrows():
+                # Assume Col 0 is Category, Col 1 is Description
+                cat_name = str(row.iloc[0]).strip()
+                desc_text = str(row.iloc[1]).strip() if len(row) > 1 else ""
+                
+                # Store everything
+                case_size_map[cat_name] = {
+                    'desc': desc_text,
+                    'data': row.to_dict() # Stores all columns (Gross Wt, Net Wt, etc.)
+                }
+        except Exception as e:
+            st.error(f"Error loading Case Size file: {e}")
+    
+    GLOBAL_COLUMN_MAPPING = {
+        "Category": "Category", "Sub-Category": "Subcategory", "Item Name": "ItemName",
+        "ItemName": "ItemName", "Description": "Fragrance", "SKU Code": "SKU Code"
+    }
+    
+    NO_SELECTION_PLACEHOLDER = "Select..." 
+
+    # --- HELPER FUNCTIONS ---
+    def create_safe_id(text):
+        return "".join(c for c in text.replace(' ', '-').lower() if c.isalnum() or c == '-').replace('--', '-')
+
+    def get_image_as_base64_str(path):
+        if path is None or not Path(path).exists(): return ""
+        try:
+            with Path(path).open("rb") as f: return base64.b64encode(f.read()).decode()
+        except Exception: return ""
+    
+    def load_template_file(filename):
+        path = os.path.join(TEMPLATES_DIR, filename)
+        try:
+            with open(path, 'r', encoding='utf-8') as f: return f.read()
+        except: return None
+
+    CSS_STYLES = load_template_file("style.css") or ""
+    
+    PRODUCT_CARD_TEMPLATE = """
+    <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; position: relative;">
+        <div style="position: absolute; top: -1px; left: -1px; width: 20px; height: 20px; border-top: 5px solid #E5C384; border-left: 5px solid #E5C384; border-radius: 5px 0 0 0;"></div>
+        <div style="position: absolute; top: -1px; right: -1px; width: 20px; height: 20px; border-top: 5px solid #E5C384; border-right: 5px solid #E5C384; border-radius: 0 5px 0 0;"></div>
+        <div style="height: 120px; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 5px; border: 1px solid #ddd; background-color: white; padding: 5px;">
+            {image_html}
+        </div>
+        <div style="text-align: center; padding: 5px 0;">
+            <h4 style="margin: 0; font-size: 11pt; color: #000; overflow: hidden; height: 30px; line-height: 1.2; font-weight: bold; font-family: serif;">{item_name}</h4>
+            <p style="margin: 2px 0; font-size: 8pt; color: #555;"><strong>Packaging:</strong> {packaging}</p>
+            <p style="margin: 0; font-size: 9pt; color: #f63366; font-weight: bold;">{sku_info}</p>
+            <p style="margin: 2px 0 0 0; font-size: 8pt; color: #888; font-style: italic; height: 25px; overflow: hidden;">{fragrance}</p>
+        </div>
+    </div>
+    """
+
+    CONFIG = None
+    try:
+        paths_to_check = [
+            r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe",
+            r"C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe",
+            os.path.join(BASE_DIR, "bin", "wkhtmltopdf.exe")
+        ]
+        found_path = None
+        for path in paths_to_check:
+            if os.path.exists(path):
+                found_path = path
+                break
+        if found_path:
+            CONFIG = pdfkit.configuration(wkhtmltopdf=found_path)
+    except Exception: pass 
+
+    # --- TEMPLATE MANAGEMENT ---
+    def load_saved_templates():
+        if not os.path.exists(SAVED_TEMPLATES_FILE): return {}
+        try: 
+            with open(SAVED_TEMPLATES_FILE, 'r') as f: return json.load(f)
+        except: return {}
+
+    def save_template_to_disk(name, cart_items):
+        templates = load_saved_templates()
+        templates[name] = cart_items
+        with open(SAVED_TEMPLATES_FILE, 'w') as f: json.dump(templates, f, indent=4)
+        st.toast(f"Template '{name}' saved!", icon="💾")
+    
+    def delete_template_from_disk(name):
+        templates = load_saved_templates()
+        if name in templates:
+            del templates[name]
+            with open(SAVED_TEMPLATES_FILE, 'w') as f: json.dump(templates, f, indent=4)
+            st.toast(f"Template '{name}' deleted.", icon="🗑️")
+
+    # --- DATA LOADING ---
+    @st.cache_data
+    def load_data():
+        all_data = []
+        required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID']
+        
+        if not os.path.exists(IMAGE_DIR):
+            st.warning(f"Image directory not found: {IMAGE_DIR}. Cannot load product images.")
+            image_files = {}
+        else:
+            image_files = {}
+            for filename in os.listdir(IMAGE_DIR):
+                name_lower = filename.lower()
+                if name_lower.endswith(('.jpg', '.jpeg', '.png')):
+                    name_norm = name_lower.rsplit('.', 1)[0].replace(' ', '').replace('_', '').replace('-', '')
+                    image_files[name_norm] = filename 
+
+        for catalogue_name, excel_path in CATALOGUE_PATHS.items():
+            if not os.path.exists(excel_path): continue
+            try:
+                df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
+                df.columns = [str(c).strip() for c in df.columns]
+                
+                df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
+                
+                df['Catalogue'] = catalogue_name
+                df['Packaging'] = 'Default Packaging'
+                df["ImageB64"] = "" 
+                df["ProductID"] = ""
+
+                for col in required_output_cols:
+                    if col not in df.columns: 
+                        if col == 'ImageB64': df[col] = ''
+                        elif col == 'ProductID': df[col] = ''
+                        else: df[col] = 'N/A' if col in ['Category', 'Subcategory', 'Fragrance'] else ''
+                
+                df['Category'] = df['Category'].astype(str).str.strip().fillna('Uncategorized')
+                df['Subcategory'] = df['Subcategory'].astype(str).str.strip().fillna('N/A')
+                df['ItemName'] = df['ItemName'].astype(str).str.strip().fillna('No Name')
+                
+                for col in ['SKU Code', 'ItemName', 'Category', 'Subcategory']:
+                    if col in df.columns:
+                        df[col] = df[col].astype(str).str.replace(r'[\r\n\t]', '', regex=True).str.strip()
+
+                df.reset_index(inplace=True)
+                df['ProductID'] = df.apply(lambda row: f"PID_{str(uuid.uuid4())[:8]}", axis=1)
+
+                if 'SKU Code' not in df.columns or df['SKU Code'].isnull().all() or (df['SKU Code'] == 'nan').any():
+                    df['SKU Code'] = df['ProductID']
+
+                if image_files:
+                    for index, row in df.iterrows():
+                        item_name_norm = row['ItemName'].strip().lower().replace(' ', '').replace('_', '').replace('-', '')
+                        sku_norm = row['SKU Code'].strip().lower().replace(' ', '').replace('_', '').replace('-', '')
+                        
+                        found_filename = None
+                        if sku_norm in image_files: found_filename = image_files[sku_norm]
+                        if not found_filename and len(item_name_norm) > 3:
+                            for norm_key, filename in image_files.items():
+                                if norm_key.startswith(item_name_norm): found_filename = filename; break
+                        if not found_filename and not found_filename and len(item_name_norm) > 4:
+                            for norm_key, filename in image_files.items():
+                                if item_name_norm in norm_key: found_filename = filename; break
+                        if not found_filename and len(item_name_norm) > 5 and 'hexa' in item_name_norm:
+                            parts = item_name_norm.split('hexa')
+                            fragrance_part = parts[0].strip()
+                            if fragrance_part:
+                                for norm_key, filename in image_files.items():
+                                    if norm_key.startswith(fragrance_part): found_filename = filename; break
+                                        
+                        if found_filename:
+                            image_path = os.path.join(IMAGE_DIR, found_filename)
+                            b64_string = get_image_as_base64_str(image_path) 
+                            if b64_string: df.loc[index, "ImageB64"] = b64_string
+                
+                df.drop(columns=['index'], inplace=True, errors='ignore')
+                all_data.append(df[required_output_cols])
+            except Exception as e: 
+                st.error(f"Error processing catalogue {catalogue_name}: {e}")
+                continue 
+        
+        if not all_data: return pd.DataFrame(columns=required_output_cols)
+        full_df = pd.concat(all_data, ignore_index=True)
+        st.session_state['master_pid_map'] = {row['ProductID']: row.to_dict() for _, row in full_df.iterrows()}
+        return full_df
+
+
+    # --- CART & SESSION STATE LOGIC ---
+    if "cart" not in st.session_state: st.session_state.cart = []
+    if "gen_pdf_bytes" not in st.session_state: st.session_state.gen_pdf_bytes = None
+    if "gen_excel_bytes" not in st.session_state: st.session_state.gen_excel_bytes = None
+    
+    if 'selected_catalogue_dropdown' not in st.session_state: st.session_state.selected_catalogue_dropdown = NO_SELECTION_PLACEHOLDER
+    if 'selected_categories_multi' not in st.session_state: st.session_state.selected_categories_multi = []
+    if 'selected_subcategories_multi' not in st.session_state: st.session_state.selected_subcategories_multi = []
+    if 'item_search_query' not in st.session_state: st.session_state.item_search_query = ""
+    if 'category_multiselect_prev' not in st.session_state: st.session_state['category_multiselect_prev'] = []
+    if 'master_pid_map' not in st.session_state: st.session_state['master_pid_map'] = {}
+    
+    # NEW: Store packing selections
+    if 'packing_selections' not in st.session_state: st.session_state['packing_selections'] = {}
+
+
+    def add_to_cart(selected_df):
+        current_pids = {item["ProductID"] for item in st.session_state.cart}
+        new_items = []
+        columns_to_keep = ['SKU Code', 'ItemName', 'Category', 'Subcategory', 'Fragrance', 'Packaging', 'SerialNo', 'ImageB64', 'Catalogue', 'ProductID']
+        
+        if isinstance(selected_df, pd.Series): selected_df = pd.DataFrame([selected_df])
+            
+        for _, row in selected_df.iterrows():
+            if row.get("ProductID") and row["ProductID"] not in current_pids:
+                new_items.append({col: row.get(col, '') for col in columns_to_keep})
+        if new_items:
+            st.session_state.cart.extend(new_items)
+            st.session_state.gen_pdf_bytes = None
+            st.session_state.gen_excel_bytes = None
+            st.toast(f"Added {len(new_items)} items to cart!", icon="🛒")
+
+    def remove_from_cart(pids_to_remove):
+        if pids_to_remove:
+            st.session_state.cart = [i for i in st.session_state.cart if i.get("ProductID") not in pids_to_remove]
+        st.session_state.gen_pdf_bytes = None
+        st.session_state.gen_excel_bytes = None
+        
+    def add_selected_visible_to_cart(df_visible):
+        pid_map = st.session_state.get('master_pid_map', {})
+        visible_pids = set(df_visible['ProductID'].tolist())
+        columns_to_keep = ['SKU Code', 'ItemName', 'Category', 'Subcategory', 'Fragrance', 'Packaging', 'SerialNo', 'ImageB64', 'Catalogue', 'ProductID']
+        current_cart_pids = {item["ProductID"] for item in st.session_state.cart if "ProductID" in item}
+        added_count = 0
+        new_items = []
+        
+        for key, is_checked in st.session_state.items():
+            if key.startswith("checkbox_") and is_checked:
+                pid = key.replace("checkbox_", "")
+                if pid not in visible_pids: continue
+                product_data = pid_map.get(pid)
+                if product_data and pid not in current_cart_pids:
+                    row_series = pd.Series(product_data) 
+                    new_item = {col: row_series.get(col, '') for col in columns_to_keep}
+                    new_items.append(new_item)
+                    added_count += 1
+        if new_items:
+            st.session_state.cart.extend(new_items)
+            st.session_state.gen_pdf_bytes = None
+            st.session_state.gen_excel_bytes = None
+            st.toast(f"Added {added_count} selected items to cart!", icon="🛒")
+        else: st.toast("No items selected.", icon="ℹ️")
+
+    def display_product_list(df_to_show):
+        selected_pids = {item.get("ProductID") for item in st.session_state.cart if "ProductID" in item}
+        if st.session_state.item_search_query:
+            query = st.session_state.item_search_query.lower()
+            df_to_show = df_to_show[
+                df_to_show['ItemName'].str.lower().str.contains(query, na=False) |
+                df_to_show['Fragrance'].str.lower().str.contains(query, na=False) |
+                df_to_show['SKU Code'].str.lower().str.contains(query, na=False)
+            ]
+        
+        df_display = df_to_show.head(100).sort_values(['Category', 'Subcategory', 'ItemName']).reset_index(drop=False)
+        st.markdown(f"**Showing {len(df_display)} of {len(df_to_show)} items** (Max 100 displayed)")
+
+        if df_display.empty: 
+            st.info("No products match filters/search.")
+            return
+
+        grouped_by_category = df_display.groupby('Category')
+        for category, cat_group_df in grouped_by_category:
+            st.markdown(f"<div class='category-list-header'>{category}</div>", unsafe_allow_html=True)
+            for subcategory, subcat_group_df in cat_group_df.groupby('Subcategory'):
+                if subcategory.strip().upper() != 'N/A': 
+                    st.markdown(f"<div class='subcategory-list-header'>{subcategory}</div>", unsafe_allow_html=True)
+                
+                col_name, col_desc, col_check = st.columns([4, 5, 1])
+                col_name.markdown('**Product Name**')
+                col_desc.markdown('**Description**')
+                col_check.markdown('**Select**')
+                st.markdown("<hr style='margin:0 0 5px 0; border-color:#ddd;'>", unsafe_allow_html=True) 
+                
+                for idx, row in subcat_group_df.iterrows():
+                    pid = row['ProductID']
+                    unique_key = f"checkbox_{pid}" 
+                    initial_checked = pid in selected_pids
+                    with col_name: st.markdown(f"**{row['ItemName']}**")
+                    with col_desc: st.markdown(f"<span style='color:#333; font-size:12px;'>{row.get('Fragrance', 'N/A')}</span>", unsafe_allow_html=True)
+                    with col_check: st.checkbox("Select", value=initial_checked, key=unique_key, label_visibility="hidden")
+        if len(df_to_show) > 100: st.info(f"Showing 100 of {len(df_to_show)} items matching filters.")
+
+    def clear_filters_dropdown():
+        st.session_state.selected_catalogue_dropdown = NO_SELECTION_PLACEHOLDER
+        st.session_state.selected_categories_multi = []
+        st.session_state.selected_subcategories_multi = []
+        st.session_state.item_search_query = ""
+        st.session_state['category_multiselect_prev'] = []
+        st.session_state['packing_selections'] = {} 
+        if "item_search_input" in st.session_state: del st.session_state["item_search_input"] 
+        if "category_multiselect" in st.session_state: del st.session_state["category_multiselect"]
+        if "subcategory_multiselect" in st.session_state: del st.session_state["subcategory_multiselect"]
+        st.rerun()
+
+    # =========================================================
+    # --- PDF GENERATION FUNCTIONS ---
+    # ========================================================= 
+
+    def generate_story_html(story_img_1_b64, story_img_2_b64):
+        text_block_1 = """HEM Corporation is amongst top global leaders in the manufacturing and export of perfumed agarbattis. For over three decades now we have been parcelling out high-quality masala sticks, agarbattis, dhoops, and cones to our customers in more than 70 countries. We are known and established for our superior quality products.<br><br>HEM has been showered with love and accolades all across the globe for its diverse range of products. This makes us the most preferred brand the world over. HEM has been awarded as the ‘Top Exporters’ brand, for incense sticks by the ‘Export Promotion Council for Handicraft’ (EPCH) for three consecutive years from 2008 till 2011.<br>We have also been awarded “Niryat Shree” (Export) Silver Trophy in the Handicraft category by ‘Federation of Indian Export Organization’ (FIEO). The award was presented to us by the then Honourable President of India, late Shri Pranab Mukherjee."""
+        text_journey_1 = """From a brand that was founded by three brothers in 1983, HEM Fragrances has come a long way. HEM started as a simple incense store offering products like masala agarbatti, thuribles, incense burner and dhoops. However, with time, there was a huge evolution in the world of fragrances much that the customers' needs also started changing. HEM incense can be experienced not only to provide you with rich aromatic experience but also create a perfect ambience for your daily prayers, meditation, and yoga.<br><br>The concept of aromatherapy massage, burning incense sticks and incense herbs for spiritual practices, using aromatherapy diffuser oils to promote healing and relaxation or using palo santo incense to purify and cleanse a space became popular around the world.<br><br>So, while we remained focused on creating our signature line of products, especially the ‘HEM Precious’ range which is a premium flagship collection, there was a dire need to expand our portfolio to meet increasing customer demands."""
+        text_vision = """Being pioneers in the fragrance industry, we understand precisely what it takes to deliver premium quality products. The spirit of creating state-of-the-art products has led us to being known as one of the best incense manufacturing companies in India and across the world. We put in great effort to understand and meet our customer demands by curating fragrances and delivering authentic products while abiding by the highest standards of quality."""
+        text_mission = """At HEM we believe in following an extremely customer-centric approach. Everything we do, whether its procuring raw materials, developing a new incense for cleansing or simply crafting a fragrance with the choicest aromatherapy oils, our customers' needs are at the heart of it all. A brand dedicated to the demands of its customers is what we are known for and aim to be defined by it always. With an unending urge to provide our customers with the best possible experience, we serve them with unique and innovative product ranges in the world of fragrances that are aligned with their needs and that help them explore scents through a creative lens. We intend to keep transforming the space that inspires wellness, serenity, spirituality and peace."""
+        
+        html = f"""
+        <div class="story-page" style="page-break-after: always; padding: 25px 50px; font-family: sans-serif;">
+            <h1 style="text-align: center; color: #333; font-size: 28pt; margin-bottom: 20px;">Our Journey</h1>
+            <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: justify;">{text_block_1}</div>
+            <div style="margin-bottom: 30px; overflow: auto; clear: both;">
+                <div style="float: left; width: 50%; margin-right: 20px; font-size: 11pt; line-height: 1.6; text-align: justify;">{text_journey_1}</div>
+                <div style="float: right; width: 45%; text-align: center;">
+                    <img src="data:image/png;base64,{story_img_1_b64}" style="max-width: 100%; height: auto; border: 1px solid #eee;" alt="Incense Ceremony Image">
+                </div>
+            </div>
+            <div style="margin-bottom: 30px; overflow: auto; clear: both;">
+                <div style="float: left; width: 50%; margin-right: 20px; font-size: 11pt; line-height: 1.6; text-align: justify;">
+                    <h2 style="color: #333; font-size: 20pt; margin-top: 30px; border-bottom: 1px solid #ccc; clear: both;">Vision</h2>
+                    <div style="font-size: 11pt; line-height: 1.6; text-align: justify;">{text_vision}</div>
+                    <h2 style="color: #333; font-size: 20pt; margin-top: 30px; border-bottom: 1px solid #ccc;">Mission</h2>
+                    <div style="font-size: 11pt; line-height: 1.6; text-align: justify;">{text_mission}</div>
+                </div>
+                <div style="float: right; width: 45%; text-align: center; margin-top: 20px;">
+                    <img src="data:image/png;base64,{story_img_2_b64}" style="max-width: 100%; height: auto; border: 1px solid #eee;" alt="Stacked Stones Image">
+                </div>
+            </div>
+            <h2 style="text-align: center; font-size: 14pt; margin-top: 40px; clear: both;">Innovation, Creativity, Sustainability</h2>
+        </div>
+        """
+        return html
+
+    def generate_table_of_contents_html(df_sorted):
+        toc_html = """
+        <div id="main-index" class="toc-page" style="page-break-before: always; page-break-after: always; padding: 20px 50px; font-family: sans-serif; background-color: #f8f8f8;">
+            <h1 style="text-align: center; color: #333; font-size: 30pt; margin-bottom: 30px; border-bottom: 2px solid #E5C384; display: inline-block; padding: 0 20px 5px 20px; font-family: serif;">INDEX</h1>
+            <div style="column-count: 2; column-gap: 40px; font-size: 11pt; line-height: 1.8;">
+        """
+        index_df = df_sorted[['Catalogue', 'Category', 'Subcategory']].drop_duplicates().sort_values(['Catalogue', 'Category', 'Subcategory'])
+
+        current_catalogue = None
+        current_category = None
+        grouped_by_catalogue = index_df.groupby('Catalogue')
+
+        for catalogue, cat_group_df in grouped_by_catalogue:
+            if catalogue != current_catalogue:
+                current_catalogue = catalogue
+                toc_html += f'<h2 style="color: #f63366; font-size: 16pt; margin-top: 15px; padding-bottom: 3px; font-weight: bold; border-bottom: 1px dotted #ccc;">{catalogue}</h2>'
+                current_category = None 
+
+            grouped_by_category = cat_group_df.groupby('Category')
+
+            for category, subcat_group_df in grouped_by_category:
+                if category != current_category:
+                    current_category = category
+                    safe_category_id = create_safe_id(current_category)
+                    category_entry = f"""
+                    <div style="background-color: #333; color: white; padding: 8px 12px; margin-bottom: 5px; margin-top: 10px; border-radius: 2px; font-weight: bold; font-family: sans-serif;">
+                        <a href="#category-{safe_category_id}" style="color: white; text-decoration: none; display: block;">{category.upper()}</a>
+                    </div>
+                    """
+                    toc_html += category_entry
+                    unique_subcategories = sorted([s for s in subcat_group_df['Subcategory'].unique() if s.strip().upper() != 'N/A'])
+                    if unique_subcategories:
+                        toc_html += '<ul style="list-style: none; margin-left: 15px; padding: 0; font-size: 10pt; line-height: 1.4;">'
+                        for subcategory in unique_subcategories: toc_html += f'<li style="margin-bottom: 2px; color: #555;">&mdash; {subcategory}</li>'
+                        toc_html += '</ul>'
+        
+        toc_html += """</div><div style="margin-top: 40px; text-align: center; font-style: italic; color: #777;">*Note: Clickable links rely on PDF reader functionality.*</div></div>"""
+        return toc_html
+
+    # --- UPDATED PDF GENERATOR WITH CASE SIZE TABLE & CUSTOM PACKING FILTER ---
+    def generate_pdf_html(df_sorted, customer_name, logo_b64, case_size_map, packing_selections=None, cs_df_global=None):
+        global CSS_STYLES, PRODUCT_CARD_TEMPLATE, COVER_IMG_PATH
+        if CSS_STYLES is None: CSS_STYLES = ""
+        current_catalogue = None
+        current_category = None
+        cover_bg_b64 = get_image_as_base64_str(COVER_IMG_PATH) 
+        
+        if packing_selections is None: packing_selections = {}
+
+        GROUPING_CSS = """
+            @page { size: A4; margin: 0; }
+            .catalogue-content { padding-left: 10mm; padding-right: 10mm; padding-top: 10px; }
+            .catalogue-heading, .category-heading, .case-size-info, .case-size-table { page-break-after: avoid; page-break-inside: avoid; padding-left: 5px; padding-right: 5px; }
+            .catalogue-heading { page-break-before: always; background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; } 
+            .category-heading { color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 15mm; clear: both; font-family: serif; } 
+            
+            /* CASE SIZE DESCRIPTION TEXT */
+            .case-size-info { color: #555; font-size: 10pt; font-style: italic; margin-bottom: 5px; clear: both; font-family: sans-serif; }
+            
+            /* CASE SIZE TABLE */
+            .case-size-table { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 9pt; margin-bottom: 15px; clear: both; }
+            .case-size-table th { border: 1px solid #ddd; background-color: #f2f2f2; padding: 6px; text-align: center; font-weight: bold; font-size: 8pt; color: #333; }
+            .case-size-table td { border: 1px solid #ddd; padding: 6px; text-align: center; color: #444; }
+
+            .cover-page { height: 297mm; width: 210mm; display: block; position: relative; page-break-after: always; margin: 0; padding: 0; overflow: hidden; }
+            .cover-image-container { position: absolute; top: 0; left: 0; height: 100%; width: 100%; z-index: 1; }
+            .cover-image-container img { width: 100%; height: 100%; object-fit: cover; }
+            .cover-footer { position: absolute; bottom: 10px; width: 100%; text-align: center; z-index: 10; color: #555; font-size: 10pt; font-family: sans-serif; background-color: rgba(255, 255, 255, 0.6); padding: 5px 0; }
+            .clearfix::after { content: ""; clear: both; display: table; }
+        """
+        
+        full_css = CSS_STYLES + GROUPING_CSS
+        html = f"<html><head><style>{full_css}</style></head><body style='margin: 0; padding: 0;'>"
+        html += f"""<div class="cover-page"><div class="cover-image-container"><img src="data:image/png;base64,{cover_bg_b64}" alt="Cover Background"></div><div class="cover-footer">Prepared for: <strong>{customer_name}</strong> | Date: {datetime.now().strftime('%Y-%m-%d')}</div></div>"""
+        
+        story_img_1_b64 = get_image_as_base64_str(STORY_IMG_1_PATH)
+        story_img_2_b64 = get_image_as_base64_str(STORY_IMG_2_PATH)
+        html += generate_story_html(story_img_1_b64, story_img_2_b64)
+        html += generate_table_of_contents_html(df_sorted)
+
+        html += '<div class="catalogue-content clearfix">' 
+        
+        # HELPER TO SAFELY GET VALUE FROM ROW DATA
+        def get_val_fuzzy(row_data, keys_list):
+            for k in keys_list:
+                for data_k in row_data.keys():
+                    if k.lower() in data_k.lower():
+                        return str(row_data[data_k])
+            return "-"
+
+        for index, row in df_sorted.iterrows():
+            if row['Catalogue'] != current_catalogue:
+                current_catalogue = row['Catalogue']
+                current_category = None
+                html += f'<div style="clear:both;"></div><h1 class="catalogue-heading">{current_catalogue}</h1>'
+
+            if row['Category'] != current_category:
+                current_category = row['Category']
+                safe_category_id = create_safe_id(current_category)
+                html += f'''
+                <div style="clear:both;"></div>
+                <h2 class="category-heading" id="category-{safe_category_id}">
+                    <a href="#main-index" style="float: right; font-size: 10px; color: #555; text-decoration: none; font-weight: normal; font-family: sans-serif; margin-top: 4px;">BACK TO INDEX &uarr;</a>
+                    {current_category}
+                </h2>
+                '''
+                
+                # --- NEW LOGIC: Print Case Size Description AND Table ---
+                info = None
+                
+                # 1. Check if user made a specific packing selection for this category
+                if current_category in packing_selections and cs_df_global is not None:
+                    selected_pack_val = packing_selections[current_category]
+                    # Filter CS_DF_GLOBAL to find the row where Col 0 is Category and Col C is the selected Packing
+                    # Note: We need to match roughly.
+                    try:
+                        # Col 2 is usually Packing
+                        filtered_rows = cs_df_global[cs_df_global.iloc[:, 2].astype(str) == selected_pack_val]
+                        if not filtered_rows.empty:
+                            row_data_raw = filtered_rows.iloc[0]
+                            desc_text = str(row_data_raw.iloc[1]).strip() if len(row_data_raw) > 1 else ""
+                            info = {
+                                'desc': desc_text,
+                                'data': row_data_raw.to_dict()
+                            }
+                    except Exception:
+                        info = None # Fallback
+
+                # 2. If no specific selection or lookup failed, fallback to default map
+                if info is None and current_category in case_size_map:
+                    info = case_size_map[current_category]
+
+                if info:
+                    desc = info.get('desc', '')
+                    row_data = info.get('data', {})
+                    
+                    # Print the description text (Column B)
+                    if desc:
+                        html += f'<div class="case-size-info"><strong>Case Size:</strong> {desc}</div>'
+                    
+                    # Extract values for the Table
+                    packing_val = get_val_fuzzy(row_data, ["Packing", "Master Ctn"])
+                    gross_wt = get_val_fuzzy(row_data, ["Gross Wt", "Gross Weight"])
+                    net_wt = get_val_fuzzy(row_data, ["Net Wt", "Net Weight"])
+                    length = get_val_fuzzy(row_data, ["Length"])
+                    breadth = get_val_fuzzy(row_data, ["Breadth", "Width"])
+                    height = get_val_fuzzy(row_data, ["Height"])
+                    cbm_val = get_val_fuzzy(row_data, ["CBM"])
+                    
+                    html += f'''
+                    <table class="case-size-table">
+                        <tr>
+                            <th>Packing per Master Ctn<br>(doz/box)</th>
+                            <th>Gross Wt.<br>(Kg)</th>
+                            <th>Net Wt.<br>(Kg)</th>
+                            <th>Length<br>(Cm)</th>
+                            <th>Breadth<br>(Cm)</th>
+                            <th>Height<br>(Cm)</th>
+                            <th>CBM</th>
+                        </tr>
+                        <tr>
+                            <td>{packing_val}</td>
+                            <td>{gross_wt}</td>
+                            <td>{net_wt}</td>
+                            <td>{length}</td>
+                            <td>{breadth}</td>
+                            <td>{height}</td>
+                            <td>{cbm_val}</td>
+                        </tr>
+                    </table>
+                    '''
+
+            # --- RENDER PRODUCT CARD ---
+            img_b64 = row["ImageB64"] 
+            mime_type = 'image/jpeg' 
+            if img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1: mime_type = 'image/png'
+            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
+            
+            packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
+            packaging_combined = packaging_text if packaging_text else ""
+            sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
+            fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
+            fragrance_output = f"Fragrance: {', '.join(fragrance_list)}" if fragrance_list else "No fragrance info listed"
+            item_name_output = row.get('ItemName', 'N/A')
+            
+            if PRODUCT_CARD_TEMPLATE:
+                card_output = PRODUCT_CARD_TEMPLATE.format(image_html=image_html_content, item_name=item_name_output, packaging=packaging_combined, sku_info=sku_info, fragrance=fragrance_output)
+                html += card_output
+            
+        html += '<div style="clear: both;"></div></div></body></html>'
+        return html
+
+    def generate_excel_file(df_sorted, customer_name):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            workbook = writer.book; worksheet = workbook.add_worksheet("Order Sheet")
+            header = ['Ref', 'Category', 'Item Name', 'Description (Fragrance)', 'Unit', 'Order Quantity']
+            fmt_head = workbook.add_format({'bold': True, 'bg_color': '#333', 'font_color': 'white', 'border': 1})
+            worksheet.write_row(0, 0, header, fmt_head)
+            for i, row in df_sorted.iterrows():
+                unit = 'Pcs'; order_qty = ''
+                worksheet.write_row(i+1, 0, [row['SKU Code'], row['Category'], row['ItemName'], row.get('Fragrance', ''), unit, order_qty]) 
+        output.seek(0)
+        return output.getvalue()
+
+    # --- MAIN UI ---
+    products_df = load_data()
+    
+    with st.sidebar:
+        st.header("📂 Manage Templates")
+        with st.expander("Save Current Cart"):
+            new_template_name = st.text_input("Template Name")
+            if st.button("Save Template"):
+                if new_template_name: save_template_to_disk(new_template_name, st.session_state.cart)
+        saved_templates = load_saved_templates()
+        if saved_templates:
+            with st.expander("Load Template"):
+                sel_temp = st.selectbox("Select Template", list(saved_templates.keys()))
+                if st.button("Load"):
+                    st.session_state.cart = saved_templates[sel_temp]
+                    st.toast(f"Template '{sel_temp}' loaded!", icon="✅")
+                    st.rerun() 
+    
+    st.title("HEM PRODUCT CATALOGUE")
+    tab1, tab2, tab3 = st.tabs(["1. Filter", "2. Review", "3. Export"])
+    
+    with tab1:
+        if products_df.empty: st.error("No Data. Please check Excel file paths and content.")
+        else:
+            final_df = products_df.copy()
+            col_filter, col_search = st.columns([1.5, 3])
+            
+            with col_filter:
+                st.markdown('## FILTER')
+                catalogue_options = [NO_SELECTION_PLACEHOLDER] + sorted(products_df['Catalogue'].unique())
+                try: default_index_cat = catalogue_options.index(st.session_state.selected_catalogue_dropdown)
+                except ValueError: default_index_cat = 0 
+                
+                sel_cat = st.selectbox("Catalogue", catalogue_options, key="selected_catalogue_dropdown", index=default_index_cat) 
+                if sel_cat != NO_SELECTION_PLACEHOLDER: final_df = final_df[final_df['Catalogue'] == sel_cat]
+                else:
+                    if st.session_state.selected_categories_multi: st.session_state.selected_categories_multi = []
+                    if st.session_state.selected_subcategories_multi: st.session_state.selected_subcategories_multi = []
+                
+                # --- FIX: Initialize sel_cats_multi to avoid NameError
+                sel_cats_multi = []
+
+                if sel_cat != NO_SELECTION_PLACEHOLDER:
+                    category_options = sorted(final_df['Category'].unique())
+                    valid_defaults_cat = [c for c in st.session_state.selected_categories_multi if c in category_options]
+                    if valid_defaults_cat != st.session_state.selected_categories_multi: st.session_state.selected_categories_multi = valid_defaults_cat
+                    sel_cats_multi = st.multiselect("Category", category_options, default=st.session_state.selected_categories_multi, key="category_multiselect")
+                    st.session_state.selected_categories_multi = sel_cats_multi 
+                    if sel_cats_multi: final_df = final_df[final_df['Category'].isin(sel_cats_multi)]
+                    
+                    # --- NEW FEATURE: Packing Selection based on Category ---
+                    if sel_cats_multi and CS_DF_GLOBAL is not None:
+                        st.markdown("### Case Size / Packing Selection")
+                        with st.expander("Configure Packing for PDF", expanded=True):
+                            for cat in sel_cats_multi:
+                                # Logic: Use the first word of the category to find matches in Column C
+                                search_term = cat.split(' ')[0] if cat else ""
+                                
+                                try:
+                                    # Filter CS_DF_GLOBAL: Column C (index 2) contains search_term
+                                    col_c_series = CS_DF_GLOBAL.iloc[:, 2].astype(str)
+                                    mask = col_c_series.str.contains(search_term, case=False, na=False)
+                                    relevant_rows = CS_DF_GLOBAL[mask]
+                                    
+                                    if not relevant_rows.empty:
+                                        options = relevant_rows.iloc[:, 2].unique().tolist()
+                                        curr_sel = st.session_state.packing_selections.get(cat)
+                                        if curr_sel not in options: curr_sel = options[0]
+                                        
+                                        new_sel = st.selectbox(f"Packing for '{cat}'", options, index=options.index(curr_sel))
+                                        st.session_state.packing_selections[cat] = new_sel
+                                    else:
+                                        st.caption(f"No specific packing options found for {cat}")
+                                except Exception as e:
+                                    st.error(f"Error filtering packing: {e}")
+                else: 
+                    st.multiselect("Category", ["Select a Catalogue first"], disabled=True)
+                
+                if st.session_state.selected_categories_multi:
+                    subcategory_options_all = sorted(final_df['Subcategory'].unique())
+                    clean_subcat_options = [s for s in subcategory_options_all if s.strip().upper() != 'N/A']
+                    is_new_category_selection = st.session_state.get('category_multiselect_prev', []) != sel_cats_multi
+                    st.session_state['category_multiselect_prev'] = sel_cats_multi 
+                    default_subcats = st.session_state.selected_subcategories_multi
+                    if is_new_category_selection and clean_subcat_options: default_subcats = clean_subcat_options; st.session_state.selected_subcategories_multi = default_subcats
+                    default_subcats = [s for s in default_subcats if s in clean_subcat_options]
+                    sel_subcats_multi = st.multiselect("Sub-Category", clean_subcat_options, default=default_subcats, key="subcategory_multiselect")
+                    st.session_state.selected_subcategories_multi = sel_subcats_multi 
+                    if sel_subcats_multi: final_df = final_df[final_df['Subcategory'].isin(sel_subcats_multi) | (final_df['Subcategory'].str.upper() == 'N/A')]
+                elif sel_cat != NO_SELECTION_PLACEHOLDER: st.multiselect("Sub-Category", ["Select one or more Categories first"], disabled=True)
+                else: st.multiselect("Sub-Category", ["Select a Catalogue first"], disabled=True)
+
+                st.markdown("---")
+                def update_search(): st.session_state.item_search_query = st.session_state["item_search_input"]
+                st.text_input("Item/Product (Search)", value=st.session_state.item_search_query, key="item_search_input", on_change=update_search, placeholder="Search by Item Name, Fragrance, or SKU...")
+                st.markdown("---")
+
+                col_add_checked, col_add_all, col_clear = st.columns(3)
+                with col_add_checked: st.button("ADD SELECTED TO CART", on_click=lambda df=final_df: add_selected_visible_to_cart(df), key="add_checked_btn", disabled=final_df.empty, type="primary", use_container_width=True)
+                with col_add_all: st.button("ADD ALL FILTERED", on_click=lambda df=final_df: add_to_cart(df), key="select_all_btn_dropdown", disabled=final_df.empty, type="secondary", use_container_width=True)
+                with col_clear: st.button("CLEAR ALL FILTERS", on_click=clear_filters_dropdown, key="clear_all_filters_dropdown_btn", type="secondary", use_container_width=True)
+                
+            with col_search:
+                st.markdown('## SEARCH RESULTS')
+                is_filtered_enough = (st.session_state.selected_catalogue_dropdown != NO_SELECTION_PLACEHOLDER and (st.session_state.selected_categories_multi or final_df['Category'].nunique() > 0))
+                if is_filtered_enough: display_product_list(final_df) 
+                else: st.info("Start by selecting a **Catalogue** and at least one **Category**.")
+
+    with tab2:
+        st.markdown('## Review Cart Items')
+        if st.session_state.cart:
+            cart_df = pd.DataFrame(st.session_state.cart)
+            cart_df['Remove'] = False
+            editable_df_view = cart_df[['ItemName', 'Category', 'Subcategory', 'SKU Code', 'Remove']]
+            edited_df = st.data_editor(editable_df_view, column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False)}, hide_index=True, key="cart_data_editor_fixed")
+            removal_skus = edited_df[edited_df['Remove'] == True]['SKU Code'].tolist()
+            pids_to_remove = cart_df[cart_df['SKU Code'].isin(removal_skus)]['ProductID'].tolist()
+            c_remove, c_clear = st.columns([1, 1])
+            with c_remove:
+                if st.button(f"Remove {len(pids_to_remove)} Selected Items", disabled=not pids_to_remove):
+                    remove_from_cart(pids_to_remove)
+                    st.rerun()
+            with c_clear:
+                if st.button("Clear Cart"): 
+                    st.session_state.cart = []
+                    st.session_state.gen_pdf_bytes = None
+                    st.session_state.gen_excel_bytes = None
+                    st.rerun()
+        else: st.info("Cart Empty")
+
+    with tab3:
+        st.markdown('## Generate & Export')
+        if st.session_state.cart:
+            name = st.text_input("Client Name", "Valued Client")
+            if st.button("Generate Catalogue"):
+                cart_data = st.session_state.cart
+                if not cart_data: st.error("Cart is empty! Cannot generate PDF."); st.stop() 
+                schema_cols = ['Catalogue', 'Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'ImageB64', 'Packaging']
+                df_final = pd.DataFrame(cart_data)
+                for col in schema_cols: 
+                    if col not in df_final.columns: df_final[col] = ''
+                df_final = df_final[schema_cols].sort_values(['Catalogue', 'Category', 'Subcategory'])
+                df_final['SerialNo'] = range(1, len(df_final)+1)
+                st.toast("Generating files...", icon="⏳")
+                st.session_state.gen_excel_bytes = generate_excel_file(df_final, name)
+                if CONFIG:
+                    try:
+                        logo = get_image_as_base64_str(LOGO_PATH) 
+                        # PASSING NEW ARGUMENTS: packing_selections and cs_df_global
+                        html = generate_pdf_html(df_final, name, logo, case_size_map, st.session_state.packing_selections, CS_DF_GLOBAL)
+                        st.session_state.gen_pdf_bytes = pdfkit.from_string(html, False, configuration=CONFIG, options={'enable-local-file-access': None, 'margin-top': '0mm', 'margin-bottom': '0mm', 'margin-left': '0mm', 'margin-right': '0mm', 'print-media-type': ''})
+                        st.toast("PDF and Excel generated!", icon="🎉")
+                    except Exception as e: st.error(f"Error generating PDF. Is wkhtmltopdf installed? Error: {e}"); st.session_state.gen_pdf_bytes = None
+                else: st.warning("wkhtmltopdf configuration missing. Cannot generate PDF."); st.session_state.gen_pdf_bytes = None
+            st.markdown("---")
+            c_pdf, c_excel = st.columns(2)
+            with c_pdf:
+                if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
+            with c_excel:
+                if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
+        else: st.info("Cart Empty. Add items in the Filter tab to generate a catalogue.")

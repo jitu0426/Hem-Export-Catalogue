@@ -1,0 +1,14 @@
+streamlit
+pandas
+pdfkit
+fuzzywuzzy
+python-Levenshtein
+Pillow
+openpyxl
+xlsxwriter
+numpy
+wkhtmltopdf
+reportlab
+cloudinary
+requests
+xlsxwriter
