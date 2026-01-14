@@ -192,6 +192,7 @@ def load_data_cached(_dummy_timestamp):
     for catalogue_name, excel_path in CATALOGUE_PATHS.items():
         if not os.path.exists(excel_path): continue
         try:
+            # FIX 1: Fill NaN immediately to prevent "float has no attribute strip" error
             df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
             df = df.fillna("") 
             
@@ -293,11 +294,12 @@ def display_product_list(df_to_show, is_global_search=False):
         with st.expander(f"{category} ({cat_count})", expanded=is_global_search):
             c1, c2 = st.columns([3,1])
             with c2:
-                # AUDIT: REPLACED DEPRECATED PARAMETER
+                # FIX 2: Replaced use_container_width with width="stretch" (2026 standard)
                 if st.button(f"Add All {cat_count} items", key=f"btn_add_cat_{create_safe_id(category)}", width="stretch"):
                     add_to_cart(cat_group_df)
 
             for subcategory, subcat_group_df in cat_group_df.groupby('Subcategory'):
+                # FIX 3: Safe string conversion for subcategory header
                 subcategory_str = str(subcategory).strip()
                 if subcategory_str.upper() != 'N/A' and subcategory_str.lower() != 'nan': 
                     st.markdown(f"<div class='subcat-header'>{subcategory_str} ({len(subcat_group_df)})</div>", unsafe_allow_html=True)
@@ -441,7 +443,7 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
     watermark_b64 = load_img_robust("watermark.png", resize=False)
 
     # CSS
-    # DIAGNOSIS FIX: Removed height:100% from body, Switched to inline-block for product cards
+    # FIX 4: Removed height:100% from body to allow infinite scrolling in PDF
     CSS_STYLES = f"""
         <!DOCTYPE html>
         <html><head><meta charset="UTF-8">
@@ -673,14 +675,14 @@ if True:
         st.header("📂 Manage Templates")
         with st.expander("Save Current Cart"):
             new_template_name = st.text_input("Template Name")
-            # AUDIT: REPLACED use_container_width
+            # FIX 2: Replaced use_container_width with width="stretch" (2026 standard)
             if st.button("Save Template", width="stretch"):
                 if new_template_name: save_template_to_disk(new_template_name, st.session_state.cart)
         saved_templates = load_saved_templates()
         if saved_templates:
             with st.expander("Load Template"):
                 sel_temp = st.selectbox("Select Template", list(saved_templates.keys()))
-                # AUDIT: REPLACED use_container_width
+                # FIX 2: Replaced use_container_width with width="stretch" (2026 standard)
                 if st.button("Load", width="stretch"):
                     st.session_state.cart = saved_templates[sel_temp]
                     st.toast(f"Template '{sel_temp}' loaded!", icon="✅")
@@ -688,7 +690,7 @@ if True:
         
         st.markdown("---")
         st.markdown("### 🔄 Data Sync")
-        # AUDIT: REPLACED use_container_width
+        # FIX 2: Replaced use_container_width with width="stretch" (2026 standard)
         if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file.", width="stretch"):
             st.session_state.data_timestamp = time.time()
             st.cache_data.clear()
@@ -755,7 +757,7 @@ if True:
                             final_df = catalog_subset_df
                 with col_btns:
                     st.markdown("#### Actions")
-                    # AUDIT: REPLACED use_container_width
+                    # FIX 2: Replaced use_container_width with width="stretch" (2026 standard)
                     if st.button("ADD SELECTED", width="stretch", type="primary"): add_selected_visible_to_cart(final_df) 
                     if st.button("ADD FILTERED", width="stretch", type="secondary"): add_to_cart(final_df) 
                     st.button("Clear Filters", width="stretch", on_click=clear_filters_dropdown)
@@ -775,7 +777,7 @@ if True:
             
             cart_df['Remove'] = False
             editable_df_view = cart_df[['Catalogue', 'Category', 'ItemName', 'Remove']]
-            # AUDIT: REPLACED use_container_width
+            # FIX 2: Replaced use_container_width with width="stretch" (2026 standard)
             edited_df = st.data_editor(editable_df_view, column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False, width="small"), "Catalogue": st.column_config.TextColumn("Catalogue Source", width="medium"), "Category": st.column_config.TextColumn("Category", width="medium"), "ItemName": st.column_config.TextColumn("Product Name", width="large")}, hide_index=True, key="cart_data_editor_fixed", width="stretch")
             
             indices_to_remove = edited_df[edited_df['Remove'] == True].index.tolist()
@@ -784,7 +786,6 @@ if True:
             
             c_remove, c_clear = st.columns([1, 1])
             with c_remove:
-                # AUDIT: REPLACED use_container_width (Wait, usually small buttons, kept as is or fixed)
                 if st.button(f"Remove {len(pids_to_remove)} Selected Items", disabled=not pids_to_remove, width="stretch"): 
                     remove_from_cart(pids_to_remove)
                     st.rerun()
@@ -829,7 +830,7 @@ if True:
             st.markdown("---")
             name = st.text_input("Client Name", "Valued Client")
             
-            # AUDIT: REPLACED use_container_width
+            # FIX 2: Replaced use_container_width with width="stretch" (2026 standard)
             if st.button("Generate Catalogue & Order Sheet", width="stretch"):
                 cart_data = st.session_state.cart
                 schema_cols = ['Catalogue', 'Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'ImageB64', 'Packaging', 'IsNew']
@@ -863,8 +864,6 @@ if True:
 
             c_pdf, c_excel = st.columns(2)
             with c_pdf:
-                # AUDIT: Added width="stretch" to ensure compliance
                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary", width="stretch")
             with c_excel:
-                # AUDIT: Added width="stretch" to ensure compliance
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary", width="stretch")
