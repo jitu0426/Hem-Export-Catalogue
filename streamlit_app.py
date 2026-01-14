@@ -662,7 +662,8 @@ def generate_excel_file(df_sorted, customer_name, case_selection_map):
     return output.getvalue()
 
 # --- 11. MAIN APP LOGIC ---
-if True: 
+# --- 11. MAIN APP LOGIC ---
+try: 
     if "cart" not in st.session_state: st.session_state.cart = []
     if "gen_pdf_bytes" not in st.session_state: st.session_state.gen_pdf_bytes = None
     if "gen_excel_bytes" not in st.session_state: st.session_state.gen_excel_bytes = None
@@ -883,3 +884,4 @@ if True:
         st.error("🚨 CRITICAL APP CRASH 🚨")
         st.error(f"Error Details: {e}")
         st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
