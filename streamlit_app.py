@@ -878,9 +878,8 @@ if True:
             with c_excel:
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary", width="stretch")
 
-# --- SAFETY BOOT CATCH-ALL --
-except Exception as e:
-    st.error("🚨 CRITICAL APP CRASH 🚨")
-    st.error(f"Error Details: {e}")
-    st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
-
+# --- SAFETY BOOT CATCH-ALL ---
+    except Exception as e:
+        st.error("🚨 CRITICAL APP CRASH 🚨")
+        st.error(f"Error Details: {e}")
+        st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
