@@ -381,11 +381,23 @@ def generate_table_of_contents_html(df_sorted):
             "safe_id": create_safe_id(category)
         })
 
+    # UPDATED: Inline-Block for TOC to ensure multi-page safety
     toc_html = """
     <style>
         .toc-title { text-align: center; font-family: serif; font-size: 32pt; color: #222; margin-bottom: 30px; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; }
-        .index-grid-container { width: 100%; margin: 0 auto; }
-        a.index-card-link { display: block; float: left; width: 30%; margin: 1.5%; height: 200px; background-color: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); text-decoration: none; overflow: hidden; border: 1px solid #e0e0e0; page-break-inside: avoid; position: relative; z-index: 100; }
+        
+        .index-grid-container { 
+            display: block; width: 100%; margin: 0 auto; font-size: 0; /* Removing whitespace */
+        }
+        a.index-card-link { 
+            display: inline-block; /* Inline-Block is safer than float/flex for server PDF */
+            width: 30%; 
+            margin: 1.5%; height: 200px; 
+            background-color: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); 
+            text-decoration: none; overflow: hidden; border: 1px solid #e0e0e0; 
+            page-break-inside: avoid; position: relative; z-index: 100; 
+            vertical-align: top;
+        }
         .index-card-image { width: 100%; height: 160px; background-repeat: no-repeat; background-position: center center; background-size: cover; background-color: #f9f9f9; }
         .index-card-label { height: 40px; background-color: #b30000; color: white; font-family: sans-serif; font-size: 10pt; font-weight: bold; display: block; line-height: 40px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; }
         .clearfix::after { content: ""; clear: both; display: table; }
@@ -428,7 +440,7 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
     watermark_b64 = load_img_robust("watermark.png", resize=False)
 
     # CSS
-    # UPDATED CSS: Removed overflow: hidden to allow pagination of long lists
+    # UPDATED CSS: SWITCHED TO INLINE-BLOCK FOR 100% SAFE PAGINATION
     CSS_STYLES = f"""
         <!DOCTYPE html>
         <html><head><meta charset="UTF-8">
@@ -447,8 +459,8 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         .story-page, .toc-page {{ width: 210mm; display: block; position: relative; margin: 0; background-color: transparent; page-break-after: always; }}
         .catalogue-content {{ padding-left: 10mm; padding-right: 10mm; display: block; padding-bottom: 50px; position: relative; z-index: 1; background-color: transparent; }}
         .catalogue-heading {{ background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; page-break-inside: avoid; clear: both; }} 
-        .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 5mm; clear: both; font-family: serif; page-break-inside: avoid; }} 
-        .subcat-pdf-header {{ color: #007bff; font-size: 11pt; font-weight: bold; margin-top: 10px; margin-bottom: 5px; clear: both; font-family: sans-serif; border-left: 3px solid #007bff; padding-left: 8px; page-break-inside: avoid; }}
+        .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 5mm; clear: both; font-family: serif; page-break-inside: avoid; width: 100%; }} 
+        .subcat-pdf-header {{ color: #007bff; font-size: 11pt; font-weight: bold; margin-top: 10px; margin-bottom: 5px; clear: both; font-family: sans-serif; border-left: 3px solid #007bff; padding-left: 8px; page-break-inside: avoid; width: 100%; }}
         .case-size-info {{ color: #555; font-size: 10pt; font-style: italic; margin-bottom: 5px; clear: both; font-family: sans-serif; }}
         .case-size-table {{ width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 9pt; margin-bottom: 10px; clear: both; background-color: rgba(255,255,255,0.9); }}
         .case-size-table th {{ border: 1px solid #ddd; background-color: #f2f2f2; padding: 4px; text-align: center; font-weight: bold; font-size: 8pt; color: #333; }}
@@ -457,8 +469,30 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         .cover-image-container img {{ width: 100%; height: 100%; object-fit: cover; }}
         .clearfix::after {{ content: ""; clear: both; display: table; }}
         
-        /* FIX: Replaced overflow:hidden with clearfix logic on the HTML element */
-        .category-block {{ display: block; clear: both; page-break-inside: auto; margin-bottom: 20px; }}
+        /* --- FIX: INLINE-BLOCK LAYOUT (The Silver Bullet for PDF Pagination) --- */
+        .category-block {{ 
+            display: block; /* Standard block */
+            font-size: 0; /* Removes whitespace between inline-blocks */
+            margin-bottom: 20px; width: 100%;
+            page-break-before: always; 
+        }}
+        
+        h1.catalogue-heading + .category-block {{
+            page-break-before: avoid !important;
+        }}
+
+        .product-card {{ 
+            display: inline-block; /* Behave like words in a sentence */
+            width: 23%; 
+            margin: 10px 1%; 
+            vertical-align: top;
+            font-size: 12pt; /* Reset font size for content */
+            
+            /* Visuals */
+            padding: 5px; box-sizing: border-box; background-color: #fcfcfc; border: 1px solid #E5C384; 
+            border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;
+            page-break-inside: avoid; 
+        }}
         </style></head><body style='margin: 0; padding: 0;'>
         <div id="watermark-layer"></div>
     """
@@ -497,7 +531,7 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
             current_subcategory = None
             safe_category_id = create_safe_id(current_category)
             
-            # Start new Category Block with CLEARFIX class
+            # Start new Category Block
             html_parts.append('<div class="category-block clearfix">') 
             category_open = True
             
