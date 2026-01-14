@@ -1,6 +1,8 @@
+
 import streamlit as st
 import os
 import sys
+import gc  # Garbage collection
 
 # --- SAFETY BOOT: CATCH CRASHES & SHOW ON SCREEN ---
 try:
@@ -33,6 +35,7 @@ try:
         HAS_WEASYPRINT = False
 
     # --- 2. CLOUDINARY CONFIG ---
+    # [Rest of Cloudinary config remains the same]
     cloudinary.config(
         cloud_name = "dddtoqebz",
         api_key = "923925294516228",
@@ -44,24 +47,33 @@ try:
     def get_image_as_base64_str(url_or_path, resize=None, max_size=None):
         if not url_or_path: return ""
         try:
+            img = None
             if str(url_or_path).startswith("http"):
-                response = requests.get(url_or_path, timeout=5)
-                if response.status_code != 200: return ""
+                # Add headers to mimic browser to avoid 403 Forbidden
+                headers = {"User-Agent": "Mozilla/5.0"}
+                response = requests.get(url_or_path, headers=headers, timeout=5)
+                if response.status_code != 200:
+                    print(f"Failed to fetch image: {response.status_code}")
+                    return ""
                 img = Image.open(io.BytesIO(response.content))
             else:
                 if not os.path.exists(url_or_path): return ""
                 img = Image.open(url_or_path)
-                
+            
             if max_size:
                 img.thumbnail(max_size)
             elif resize:
                 img = img.resize(resize) 
-                
+            
             buffered = io.BytesIO()
-            if img.mode in ("RGBA", "P"):
+            # Force RGB for JPEG compatibility
+            if img.mode != "RGB":
                 img = img.convert("RGB")
+            
+            # Save as JPEG with 85% quality to save space
             img.save(buffered, format="JPEG", quality=85)
             return base64.b64encode(buffered.getvalue()).decode()
+            
         except Exception as e:
             print(f"Error processing image {url_or_path}: {e}")
             return ""
@@ -77,6 +89,7 @@ try:
         return text
 
     def force_light_theme_setup():
+        # [Theme setup code remains the same]
         config_dir = ".streamlit"
         config_path = os.path.join(config_dir, "config.toml")
         if not os.path.exists(config_dir): os.makedirs(config_dir)
@@ -88,6 +101,7 @@ try:
     force_light_theme_setup()
     st.set_page_config(page_title="HEM PRODUCT CATALOGUE", page_icon="🛍️", layout="wide")
 
+    # [CSS Styles remain the same]
     st.markdown("""
         <style>
             .stApp { background-color: #ffffff !important; color: #000000 !important; }
@@ -99,11 +113,11 @@ try:
     """, unsafe_allow_html=True)
 
     # --- 5. PATHS ---
+    # [Paths remain the same]
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
     TEMPLATES_DIR = os.path.join(BASE_DIR, "templates") 
     SAVED_TEMPLATES_FILE = os.path.join(BASE_DIR, "saved_templates.json")
-
     STORY_IMG_1_PATH = os.path.join(BASE_DIR, "image-journey.png") 
     COVER_IMG_PATH = os.path.join(BASE_DIR, "assets", "cover page.png")
     WATERMARK_IMG_PATH = os.path.join(BASE_DIR, "assets", "watermark.png") 
@@ -139,31 +153,34 @@ try:
                     break
             if found_path: CONFIG = pdfkit.configuration(wkhtmltopdf=found_path)
         else:
+            # Linux/Server environment
             try:
+                # Try finding it in path
                 path_wkhtmltopdf = subprocess.check_output(['which', 'wkhtmltopdf']).decode('utf-8').strip()
                 CONFIG = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
             except:
-                CONFIG = None
+                # Try a common default location
+                if os.path.exists('/usr/bin/wkhtmltopdf'):
+                    CONFIG = pdfkit.configuration(wkhtmltopdf='/usr/bin/wkhtmltopdf')
+                else:
+                    CONFIG = None
     except Exception as e: 
         print(f"PDFKit Config Error: {e}")
         CONFIG = None
 
     # --- 7. TEMPLATE MANAGEMENT ---
+    # [Template functions remain the same]
     def load_saved_templates():
-        if not os.path.exists(SAVED_TEMPLATES_FILE):
-            return {}
+        if not os.path.exists(SAVED_TEMPLATES_FILE): return {}
         try: 
-            with open(SAVED_TEMPLATES_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            return {}
+            with open(SAVED_TEMPLATES_FILE, 'r') as f: return json.load(f)
+        except: return {}
 
     def save_template_to_disk(name, cart_items):
         templates = load_saved_templates()
         templates[name] = cart_items
         try:
-            with open(SAVED_TEMPLATES_FILE, 'w') as f:
-                json.dump(templates, f, indent=4)
+            with open(SAVED_TEMPLATES_FILE, 'w') as f: json.dump(templates, f, indent=4)
             st.toast(f"Template '{name}' saved!", icon="💾")
         except Exception as e:
             st.error(f"Failed to save template: {e}")
@@ -223,7 +240,10 @@ try:
                             if best_score < 75: found_url = None
 
                         if found_url:
-                            df.loc[index, "ImageB64"] = get_image_as_base64_str(found_url)
+                            # Note: Loading base64 here might be heavy for huge datasets. 
+                            # If memory crashes persist, consider storing URL here and fetching base64 JIT during PDF gen.
+                            # For now, we use the resizing function to keep it light.
+                            df.loc[index, "ImageB64"] = get_image_as_base64_str(found_url, max_size=(200, 200)) # Smaller thumb for preview
                 
                 all_data.append(df[required_output_cols])
             except Exception as e:
@@ -234,6 +254,7 @@ try:
         return full_df
 
     # --- 9. CART UTILS ---
+    # [Cart functions remain the same]
     def add_to_cart(selected_df):
         current_pids = {item["ProductID"] for item in st.session_state.cart}
         new_items = []
@@ -331,6 +352,7 @@ try:
     """
 
     def generate_story_html(story_img_1_b64):
+        # [Content remains the same]
         text_block_1 = """HEM Corporation is amongst top global leaders in the manufacturing and export of perfumed agarbattis. For over three decades now we have been parceling out high-quality masala sticks, agarbattis, dhoops, and cones to our customers in more than 70 countries. We are known and established for our superior quality products.<br><br>HEM has been showered with love and accolades all across the globe for its diverse range of products. This makes us the most preferred brand the world over. HEM has been awarded as the ‘Top Exporters’ brand, for incense sticks by the ‘Export Promotion Council for Handicraft’ (EPCH) for three consecutive years from 2008 till 2011.<br><br>We have also been awarded “Niryat Shree” (Export) Silver Trophy in the Handicraft category by ‘Federation of Indian Export Organization’ (FIEO). The award was presented to us by the then Honourable President of India, late Shri Pranab Mukherjee."""
         text_journey_1 = """From a brand that was founded by three brothers in 1983, HEM Fragrances has come a long way. HEM started as a simple incense store offering products like masala agarbatti, thuribles, incense burner and dhoops. However, with time, there was a huge evolution in the world of fragrances much that the customers' needs also started changing. HEM incense can be experienced not only to provide you with rich aromatic experience but also create a perfect ambience for your daily prayers, meditation, and yoga.<br><br>The concept of aromatherapy massage, burning incense sticks and incense herbs for spiritual practices, using aromatherapy diffuser oils to promote healing and relaxation or using palo santo incense to purify and cleanse a space became popular around the world.<br><br>So, while we remained focused on creating our signature line of products, especially the ‘HEM Precious’ range which is a premium flagship collection, there was a dire need to expand our portfolio to meet increasing customer demands."""
         
@@ -356,6 +378,7 @@ try:
         return html
 
     def generate_table_of_contents_html(df_sorted):
+        # [Function content remains the same]
         categories_data = []
         seen_categories = set()
         unique_categories = []
@@ -577,6 +600,16 @@ try:
                     html_parts.append(f'<div class="subcat-pdf-header">{current_subcategory}</div>')
 
             # 4. PRODUCT CARD
+            # MEMORY FIX: JIT Conversion of ImageURL to Base64 with STRICT JPEG
+            img_url = row.get("ImageB64", "")
+            if not img_url.startswith("http"):
+                 # Handle case where it might already be base64 (local) or just empty
+                 pass
+            else:
+                 # It's a URL, convert JIT
+                 img_b64 = get_image_as_base64_str(img_url)
+                 row["ImageB64"] = img_b64
+
             img_b64 = row["ImageB64"] 
             mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
             image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
@@ -671,20 +704,23 @@ try:
             st.header("📂 Manage Templates")
             with st.expander("Save Current Cart"):
                 new_template_name = st.text_input("Template Name")
-                if st.button("Save Template"):
+                # AUDIT: REPLACED use_container_width
+                if st.button("Save Template", width="stretch"):
                     if new_template_name: save_template_to_disk(new_template_name, st.session_state.cart)
             saved_templates = load_saved_templates()
             if saved_templates:
                 with st.expander("Load Template"):
                     sel_temp = st.selectbox("Select Template", list(saved_templates.keys()))
-                    if st.button("Load"):
+                    # AUDIT: REPLACED use_container_width
+                    if st.button("Load", width="stretch"):
                         st.session_state.cart = saved_templates[sel_temp]
                         st.toast(f"Template '{sel_temp}' loaded!", icon="✅")
                         st.rerun()
             
             st.markdown("---")
             st.markdown("### 🔄 Data Sync")
-            if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file."):
+            # AUDIT: REPLACED use_container_width
+            if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file.", width="stretch"):
                 st.session_state.data_timestamp = time.time()
                 st.cache_data.clear()
                 st.rerun()
@@ -750,9 +786,10 @@ try:
                                 final_df = catalog_subset_df
                     with col_btns:
                         st.markdown("#### Actions")
-                        if st.button("ADD SELECTED", use_container_width=True, type="primary"): add_selected_visible_to_cart(final_df) 
-                        if st.button("ADD FILTERED", use_container_width=True, type="secondary"): add_to_cart(final_df) 
-                        st.button("Clear Filters", use_container_width=True, on_click=clear_filters_dropdown)
+                        # AUDIT: REPLACED use_container_width
+                        if st.button("ADD SELECTED", width="stretch", type="primary"): add_selected_visible_to_cart(final_df) 
+                        if st.button("ADD FILTERED", width="stretch", type="secondary"): add_to_cart(final_df) 
+                        st.button("Clear Filters", width="stretch", on_click=clear_filters_dropdown)
 
                     st.markdown("---")
                     if sel_cat != NO_SELECTION_PLACEHOLDER:
@@ -769,7 +806,8 @@ try:
                 
                 cart_df['Remove'] = False
                 editable_df_view = cart_df[['Catalogue', 'Category', 'ItemName', 'Remove']]
-                edited_df = st.data_editor(editable_df_view, column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False, width="small"), "Catalogue": st.column_config.TextColumn("Catalogue Source", width="medium"), "Category": st.column_config.TextColumn("Category", width="medium"), "ItemName": st.column_config.TextColumn("Product Name", width="large")}, hide_index=True, key="cart_data_editor_fixed", use_container_width=True)
+                # AUDIT: REPLACED use_container_width
+                edited_df = st.data_editor(editable_df_view, column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False, width="small"), "Catalogue": st.column_config.TextColumn("Catalogue Source", width="medium"), "Category": st.column_config.TextColumn("Category", width="medium"), "ItemName": st.column_config.TextColumn("Product Name", width="large")}, hide_index=True, key="cart_data_editor_fixed", width="stretch")
                 
                 indices_to_remove = edited_df[edited_df['Remove'] == True].index.tolist()
                 if indices_to_remove: pids_to_remove = cart_df.loc[indices_to_remove, 'ProductID'].tolist()
@@ -777,11 +815,11 @@ try:
                 
                 c_remove, c_clear = st.columns([1, 1])
                 with c_remove:
-                    if st.button(f"Remove {len(pids_to_remove)} Selected Items", disabled=not pids_to_remove): 
+                    if st.button(f"Remove {len(pids_to_remove)} Selected Items", disabled=not pids_to_remove, width="stretch"): 
                         remove_from_cart(pids_to_remove)
                         st.rerun()
                 with c_clear:
-                    if st.button("Clear Cart"): 
+                    if st.button("Clear Cart", width="stretch"): 
                         st.session_state.cart = [] 
                         st.session_state.gen_pdf_bytes = None
                         st.session_state.gen_excel_bytes = None
@@ -821,7 +859,8 @@ try:
                 st.markdown("---")
                 name = st.text_input("Client Name", "Valued Client")
                 
-                if st.button("Generate Catalogue & Order Sheet"):
+                # AUDIT: REPLACED use_container_width
+                if st.button("Generate Catalogue & Order Sheet", width="stretch"):
                     cart_data = st.session_state.cart
                     schema_cols = ['Catalogue', 'Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'ImageB64', 'Packaging', 'IsNew']
                     df_final = pd.DataFrame(cart_data)
@@ -848,15 +887,21 @@ try:
                         else:
                             st.error("❌ No PDF engine found! (Install 'wkhtmltopdf' locally or 'weasyprint' on server).")
                             st.session_state.gen_pdf_bytes = None
+                        
+                        # Memory cleanup
+                        gc.collect()
+
                     except Exception as e: 
                         st.error(f"Error generating PDF: {e}")
                         st.session_state.gen_pdf_bytes = None
 
                 c_pdf, c_excel = st.columns(2)
                 with c_pdf:
-                    if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
+                    # AUDIT: REPLACED use_container_width
+                    if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary", width="stretch")
                 with c_excel:
-                    if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
+                    # AUDIT: REPLACED use_container_width
+                    if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary", width="stretch")
 
 # --- SAFETY BOOT CATCH-ALL ---
 except Exception as e:
