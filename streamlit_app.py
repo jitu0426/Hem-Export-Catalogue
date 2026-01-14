@@ -22,7 +22,6 @@ try:
     import cloudinary
     import cloudinary.api
     import requests
-    import gc 
 
     # --- 1. SAFE IMPORT LOGIC ---
     HAS_WEASYPRINT = False
@@ -42,13 +41,9 @@ try:
     )
 
     # --- 3. HELPER FUNCTIONS ---
-    def get_image_as_base64_str(url_or_path, resize=None, max_size=(300, 300)):
-        """
-        Fetches images and FORCES conversion to JPEG to prevent MIME mismatch errors.
-        """
+    def get_image_as_base64_str(url_or_path, resize=None, max_size=None):
         if not url_or_path: return ""
         try:
-            # 1. Fetch Image
             if str(url_or_path).startswith("http"):
                 response = requests.get(url_or_path, timeout=5)
                 if response.status_code != 200: return ""
@@ -56,24 +51,17 @@ try:
             else:
                 if not os.path.exists(url_or_path): return ""
                 img = Image.open(url_or_path)
-            
-            # 2. Resize (Critical for RAM)
+                
             if max_size:
                 img.thumbnail(max_size)
             elif resize:
                 img = img.resize(resize) 
-            
-            # 3. Force Convert to RGB (JPEG requirement)
-            if img.mode != "RGB":
-                img = img.convert("RGB")
-            
-            # 4. Save as JPEG
+                
             buffered = io.BytesIO()
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
             img.save(buffered, format="JPEG", quality=85)
-            
-            # 5. Return pure Base64 string
             return base64.b64encode(buffered.getvalue()).decode()
-            
         except Exception as e:
             print(f"Error processing image {url_or_path}: {e}")
             return ""
@@ -184,7 +172,7 @@ try:
     @st.cache_data(show_spinner="Syncing with Cloudinary & Excel...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
-        required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageURL', 'ProductID', 'IsNew']
+        required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
         # A. Cloudinary
         cloudinary_map = {}
@@ -235,8 +223,7 @@ try:
                             if best_score < 75: found_url = None
 
                         if found_url:
-                            # SAVE URL INSTEAD OF BASE64 TO SAVE RAM
-                            df.loc[index, "ImageURL"] = found_url
+                            df.loc[index, "ImageB64"] = get_image_as_base64_str(found_url)
                 
                 all_data.append(df[required_output_cols])
             except Exception as e:
@@ -250,7 +237,7 @@ try:
     def add_to_cart(selected_df):
         current_pids = {item["ProductID"] for item in st.session_state.cart}
         new_items = []
-        columns_to_keep = ['SKU Code', 'ItemName', 'Category', 'Subcategory', 'Fragrance', 'Packaging', 'SerialNo', 'ImageURL', 'Catalogue', 'ProductID', 'IsNew']
+        columns_to_keep = ['SKU Code', 'ItemName', 'Category', 'Subcategory', 'Fragrance', 'Packaging', 'SerialNo', 'ImageB64', 'Catalogue', 'ProductID', 'IsNew']
         if isinstance(selected_df, pd.Series): selected_df = pd.DataFrame([selected_df])
         for _, row in selected_df.iterrows():
             if row.get("ProductID") and row["ProductID"] not in current_pids:
@@ -268,7 +255,7 @@ try:
     def add_selected_visible_to_cart(df_visible):
         pid_map = st.session_state.get('master_pid_map', {})
         visible_pids = set(df_visible['ProductID'].tolist())
-        columns_to_keep = ['SKU Code', 'ItemName', 'Category', 'Subcategory', 'Fragrance', 'Packaging', 'SerialNo', 'ImageURL', 'Catalogue', 'ProductID', 'IsNew']
+        columns_to_keep = ['SKU Code', 'ItemName', 'Category', 'Subcategory', 'Fragrance', 'Packaging', 'SerialNo', 'ImageB64', 'Catalogue', 'ProductID', 'IsNew']
         current_cart_pids = {item["ProductID"] for item in st.session_state.cart if "ProductID" in item}
         added_count = 0; new_items = []
         for key, is_checked in st.session_state.items():
@@ -305,7 +292,7 @@ try:
             with st.expander(f"{category} ({cat_count})", expanded=is_global_search):
                 c1, c2 = st.columns([3,1])
                 with c2:
-                    if st.button(f"Add All {cat_count} items", key=f"btn_add_cat_{create_safe_id(category)}", width="stretch"):
+                    if st.button(f"Add All {cat_count} items", key=f"btn_add_cat_{create_safe_id(category)}"):
                         add_to_cart(cat_group_df)
 
                 for subcategory, subcat_group_df in cat_group_df.groupby('Subcategory'):
@@ -381,11 +368,10 @@ try:
         for category in unique_categories:
             group = df_sorted[df_sorted['Category'] == category]
             rep_image = "" 
-            # MEMORY FIX: JIT Conversion for TOC
             for _, row in group.iterrows():
-                url = row.get('ImageURL', '')
-                if url:
-                    rep_image = get_image_as_base64_str(url, max_size=(150,150))
+                img_str = row.get('ImageB64', '')
+                if img_str and len(str(img_str)) > 100: 
+                    rep_image = img_str
                     break 
             
             categories_data.append({
@@ -420,8 +406,7 @@ try:
             <div class="index-grid-container clearfix">
         """
         for cat in categories_data:
-            # FIX: STRICT JPEG IN TOC
-            bg_style = f"background-image: url('data:image/jpeg;base64,{cat['image']}');" if cat['image'] else "background-color: #eee;" 
+            bg_style = f"background-image: url('data:image/png;base64,{cat['image']}');" if cat['image'] else "background-color: #eee;" 
             card_html = f"""<a href="#category-{cat['safe_id']}" class="index-card-link"><div class="index-card-image" style="{bg_style}"></div><div class="index-card-label">{cat['name']}</div></a>"""
             toc_html += card_html
 
@@ -454,7 +439,7 @@ try:
         watermark_b64 = load_img_robust("watermark.png", resize=False)
 
         # CSS
-        # FIX 4: Removed height:100% from body to allow infinite scrolling in PDF
+        # DIAGNOSIS FIX: Removed height:100% from body, Switched to inline-block for product cards
         CSS_STYLES = f"""
             <!DOCTYPE html>
             <html><head><meta charset="UTF-8">
@@ -522,7 +507,7 @@ try:
         
         html_parts = []
         html_parts.append(CSS_STYLES)
-        html_parts.append(f"""<div class="cover-page"><div class="cover-image-container"><img src="data:image/jpeg;base64,{cover_bg_b64}"></div></div>""")
+        html_parts.append(f"""<div class="cover-page"><div class="cover-image-container"><img src="data:image/png;base64,{cover_bg_b64}"></div></div>""")
         html_parts.append(generate_story_html(story_img_1_b64))
         html_parts.append(generate_table_of_contents_html(df_sorted))
         html_parts.append('<div class="catalogue-content clearfix">')
@@ -592,14 +577,9 @@ try:
                     html_parts.append(f'<div class="subcat-pdf-header">{current_subcategory}</div>')
 
             # 4. PRODUCT CARD
-            # MEMORY FIX: JIT Conversion of ImageURL to Base64 with STRICT JPEG
-            img_url = row.get("ImageURL", "")
-            img_b64 = ""
-            if img_url:
-                img_b64 = get_image_as_base64_str(img_url)
-                
-            # FORCE JPEG MIME TYPE - FIX FOR INVISIBLE IMAGES
-            image_html_content = f'<img src="data:image/jpeg;base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
+            img_b64 = row["ImageB64"] 
+            mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
+            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
             
             packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
             sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
@@ -691,20 +671,20 @@ try:
             st.header("📂 Manage Templates")
             with st.expander("Save Current Cart"):
                 new_template_name = st.text_input("Template Name")
-                if st.button("Save Template", width="stretch"):
+                if st.button("Save Template"):
                     if new_template_name: save_template_to_disk(new_template_name, st.session_state.cart)
             saved_templates = load_saved_templates()
             if saved_templates:
                 with st.expander("Load Template"):
                     sel_temp = st.selectbox("Select Template", list(saved_templates.keys()))
-                    if st.button("Load", width="stretch"):
+                    if st.button("Load"):
                         st.session_state.cart = saved_templates[sel_temp]
                         st.toast(f"Template '{sel_temp}' loaded!", icon="✅")
                         st.rerun()
             
             st.markdown("---")
             st.markdown("### 🔄 Data Sync")
-            if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file.", width="stretch"):
+            if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file."):
                 st.session_state.data_timestamp = time.time()
                 st.cache_data.clear()
                 st.rerun()
@@ -770,9 +750,9 @@ try:
                                 final_df = catalog_subset_df
                     with col_btns:
                         st.markdown("#### Actions")
-                        if st.button("ADD SELECTED", width="stretch", type="primary"): add_selected_visible_to_cart(final_df) 
-                        if st.button("ADD FILTERED", width="stretch", type="secondary"): add_to_cart(final_df) 
-                        st.button("Clear Filters", width="stretch", on_click=clear_filters_dropdown)
+                        if st.button("ADD SELECTED", use_container_width=True, type="primary"): add_selected_visible_to_cart(final_df) 
+                        if st.button("ADD FILTERED", use_container_width=True, type="secondary"): add_to_cart(final_df) 
+                        st.button("Clear Filters", use_container_width=True, on_click=clear_filters_dropdown)
 
                     st.markdown("---")
                     if sel_cat != NO_SELECTION_PLACEHOLDER:
@@ -789,7 +769,7 @@ try:
                 
                 cart_df['Remove'] = False
                 editable_df_view = cart_df[['Catalogue', 'Category', 'ItemName', 'Remove']]
-                edited_df = st.data_editor(editable_df_view, column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False, width="small"), "Catalogue": st.column_config.TextColumn("Catalogue Source", width="medium"), "Category": st.column_config.TextColumn("Category", width="medium"), "ItemName": st.column_config.TextColumn("Product Name", width="large")}, hide_index=True, key="cart_data_editor_fixed", width="stretch")
+                edited_df = st.data_editor(editable_df_view, column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False, width="small"), "Catalogue": st.column_config.TextColumn("Catalogue Source", width="medium"), "Category": st.column_config.TextColumn("Category", width="medium"), "ItemName": st.column_config.TextColumn("Product Name", width="large")}, hide_index=True, key="cart_data_editor_fixed", use_container_width=True)
                 
                 indices_to_remove = edited_df[edited_df['Remove'] == True].index.tolist()
                 if indices_to_remove: pids_to_remove = cart_df.loc[indices_to_remove, 'ProductID'].tolist()
@@ -797,11 +777,11 @@ try:
                 
                 c_remove, c_clear = st.columns([1, 1])
                 with c_remove:
-                    if st.button(f"Remove {len(pids_to_remove)} Selected Items", disabled=not pids_to_remove, width="stretch"): 
+                    if st.button(f"Remove {len(pids_to_remove)} Selected Items", disabled=not pids_to_remove): 
                         remove_from_cart(pids_to_remove)
                         st.rerun()
                 with c_clear:
-                    if st.button("Clear Cart", width="stretch"): 
+                    if st.button("Clear Cart"): 
                         st.session_state.cart = [] 
                         st.session_state.gen_pdf_bytes = None
                         st.session_state.gen_excel_bytes = None
@@ -841,7 +821,7 @@ try:
                 st.markdown("---")
                 name = st.text_input("Client Name", "Valued Client")
                 
-                if st.button("Generate Catalogue & Order Sheet", width="stretch"):
+                if st.button("Generate Catalogue & Order Sheet"):
                     cart_data = st.session_state.cart
                     schema_cols = ['Catalogue', 'Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'ImageB64', 'Packaging', 'IsNew']
                     df_final = pd.DataFrame(cart_data)
@@ -868,19 +848,15 @@ try:
                         else:
                             st.error("❌ No PDF engine found! (Install 'wkhtmltopdf' locally or 'weasyprint' on server).")
                             st.session_state.gen_pdf_bytes = None
-                        
-                        # Memory cleanup
-                        gc.collect()
-
                     except Exception as e: 
                         st.error(f"Error generating PDF: {e}")
                         st.session_state.gen_pdf_bytes = None
 
                 c_pdf, c_excel = st.columns(2)
                 with c_pdf:
-                    if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary", width="stretch")
+                    if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
                 with c_excel:
-                    if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary", width="stretch")
+                    if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
 
 # --- SAFETY BOOT CATCH-ALL ---
 except Exception as e:
