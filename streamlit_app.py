@@ -381,16 +381,17 @@ def generate_table_of_contents_html(df_sorted):
             "safe_id": create_safe_id(category)
         })
 
-    # UPDATED: Inline-Block for TOC to ensure multi-page safety
     toc_html = """
     <style>
         .toc-title { text-align: center; font-family: serif; font-size: 32pt; color: #222; margin-bottom: 30px; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; }
         
+        /* Updated to use BLOCK for safer pagination */
         .index-grid-container { 
-            display: block; width: 100%; margin: 0 auto; font-size: 0; /* Removing whitespace */
+            display: block; width: 100%; margin: 0 auto; font-size: 0;
         }
+        
         a.index-card-link { 
-            display: inline-block; /* Inline-Block is safer than float/flex for server PDF */
+            display: inline-block; /* Inline-Block is safest for multi-page rendering */
             width: 30%; 
             margin: 1.5%; height: 200px; 
             background-color: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); 
@@ -440,14 +441,25 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
     watermark_b64 = load_img_robust("watermark.png", resize=False)
 
     # CSS
-    # UPDATED CSS: SWITCHED TO INLINE-BLOCK FOR 100% SAFE PAGINATION
+    # DIAGNOSIS FIX: Removed height:100% from body, Switched to inline-block for product cards
     CSS_STYLES = f"""
         <!DOCTYPE html>
         <html><head><meta charset="UTF-8">
         <style>
         @page {{ size: A4; margin: 0; }}
         * {{ box-sizing: border-box; }} 
-        html, body {{ margin: 0 !important; padding: 0 !important; width: 100% !important; height: 100%; background-color: transparent !important; }}
+        
+        /* CRITICAL FIX FOR SERVER-SIDE PDF GENERATION:
+           We removed 'height: 100%' from html/body. 
+           This allows the document to grow infinitely across multiple pages.
+        */
+        html, body {{ 
+            margin: 0 !important; 
+            padding: 0 !important; 
+            width: 100% !important; 
+            background-color: transparent !important; 
+        }}
+        
         #watermark-layer {{
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             z-index: -1; 
@@ -469,11 +481,17 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         .cover-image-container img {{ width: 100%; height: 100%; object-fit: cover; }}
         .clearfix::after {{ content: ""; clear: both; display: table; }}
         
-        /* --- FIX: INLINE-BLOCK LAYOUT (The Silver Bullet for PDF Pagination) --- */
+        /* LAYOUT FIX:
+           Using 'display: block' for the container and 'display: inline-block' for the cards.
+           This is the most robust method for multi-page PDF generation on Linux servers.
+        */
         .category-block {{ 
-            display: block; /* Standard block */
-            font-size: 0; /* Removes whitespace between inline-blocks */
-            margin-bottom: 20px; width: 100%;
+            display: block; 
+            font-size: 0; /* Clears whitespace between inline-blocks */
+            clear: both; 
+            page-break-inside: auto; 
+            margin-bottom: 20px; 
+            width: 100%;
             page-break-before: always; 
         }}
         
@@ -482,13 +500,11 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         }}
 
         .product-card {{ 
-            display: inline-block; /* Behave like words in a sentence */
+            display: inline-block; /* Treated like text characters that wrap */
             width: 23%; 
             margin: 10px 1%; 
             vertical-align: top;
-            font-size: 12pt; /* Reset font size for content */
-            
-            /* Visuals */
+            font-size: 12pt; /* Reset font size for text inside */
             padding: 5px; box-sizing: border-box; background-color: #fcfcfc; border: 1px solid #E5C384; 
             border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;
             page-break-inside: avoid; 
@@ -531,7 +547,7 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
             current_subcategory = None
             safe_category_id = create_safe_id(current_category)
             
-            # Start new Category Block
+            # Start new Category Block (Standard Block with inline-block children)
             html_parts.append('<div class="category-block clearfix">') 
             category_open = True
             
@@ -557,7 +573,8 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         if sub_val.upper() != 'N/A' and sub_val.lower() != 'nan' and sub_val != '':
             if sub_val != current_subcategory:
                 current_subcategory = sub_val
-                html_parts.append(f'<div class="subcat-pdf-header">{current_subcategory}</div>')
+                # To ensure the header breaks to a new line, we wrap it in a full-width block
+                html_parts.append(f'<div style="width: 100%; display: block;"><div class="subcat-pdf-header">{current_subcategory}</div></div>')
 
         # 4. PRODUCT CARD
         img_b64 = row["ImageB64"] 
