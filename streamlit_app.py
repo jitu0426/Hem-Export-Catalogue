@@ -807,7 +807,8 @@ if True:
                 if not suffix_col: st.error(f"Could not find 'Carton Suffix' column. Found: {full_case_size_df.columns.tolist()}")
                 else:
                     for cat in cart_categories:
-                        options = full_case_size_df[full_case_size_df['Category'] == cat]
+                        # FIX: Added .copy() here to fix the SettingWithCopyWarning
+                        options = full_case_size_df[full_case_size_df['Category'] == cat].copy()
                         if not options.empty:
                             options['DisplayLabel'] = options.apply(lambda x: f"{x[suffix_col]} (CBM: {x[cbm_col]})", axis=1)
                             label_list = options['DisplayLabel'].tolist()
@@ -815,7 +816,7 @@ if True:
                             selected_row = options[options['DisplayLabel'] == selected_label].iloc[0]
                             selection_map[cat] = selected_row.to_dict()
                         else: st.warning(f"No Case Size options found for category: {cat}")
-            
+                        
             st.markdown("---")
             name = st.text_input("Client Name", "Valued Client")
             
@@ -855,4 +856,5 @@ if True:
                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
             with c_excel:
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
+
 
