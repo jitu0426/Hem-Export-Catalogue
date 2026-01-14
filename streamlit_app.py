@@ -684,10 +684,11 @@ if True:
         
         st.markdown("---")
         st.markdown("### 🔄 Data Sync")
-        if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file."):
+        if st.button("Refresh Cloudinary & Excel", help="..."):
             st.session_state.data_timestamp = time.time()
-            st.cache_data.clear()
-            st.rerun()
+            st.cache_data.clear()  # <--- This deletes the "old" list of images
+            st.rerun()             # <--- This restarts the app
+        
 
     st.title("HEM PRODUCT CATALOGUE")
     tab1, tab2, tab3 = st.tabs(["1. Filter", "2. Review", "3. Export"])
@@ -854,3 +855,4 @@ if True:
                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
             with c_excel:
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
+
