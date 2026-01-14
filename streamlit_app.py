@@ -750,9 +750,10 @@ try:
                                 final_df = catalog_subset_df
                     with col_btns:
                         st.markdown("#### Actions")
-                        if st.button("ADD SELECTED", use_container_width=True, type="primary"): add_selected_visible_to_cart(final_df) 
-                        if st.button("ADD FILTERED", use_container_width=True, type="secondary"): add_to_cart(final_df) 
-                        st.button("Clear Filters", use_container_width=True, on_click=clear_filters_dropdown)
+                        # UPDATED: Replaced deprecated use_container_width with width='stretch'
+                        if st.button("ADD SELECTED", width="stretch", type="primary"): add_selected_visible_to_cart(final_df) 
+                        if st.button("ADD FILTERED", width="stretch", type="secondary"): add_to_cart(final_df) 
+                        st.button("Clear Filters", width="stretch", on_click=clear_filters_dropdown)
 
                     st.markdown("---")
                     if sel_cat != NO_SELECTION_PLACEHOLDER:
@@ -769,7 +770,8 @@ try:
                 
                 cart_df['Remove'] = False
                 editable_df_view = cart_df[['Catalogue', 'Category', 'ItemName', 'Remove']]
-                edited_df = st.data_editor(editable_df_view, column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False, width="small"), "Catalogue": st.column_config.TextColumn("Catalogue Source", width="medium"), "Category": st.column_config.TextColumn("Category", width="medium"), "ItemName": st.column_config.TextColumn("Product Name", width="large")}, hide_index=True, key="cart_data_editor_fixed", use_container_width=True)
+                # UPDATED: Replaced deprecated use_container_width with width='stretch'
+                edited_df = st.data_editor(editable_df_view, column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False, width="small"), "Catalogue": st.column_config.TextColumn("Catalogue Source", width="medium"), "Category": st.column_config.TextColumn("Category", width="medium"), "ItemName": st.column_config.TextColumn("Product Name", width="large")}, hide_index=True, key="cart_data_editor_fixed", width="stretch")
                 
                 indices_to_remove = edited_df[edited_df['Remove'] == True].index.tolist()
                 if indices_to_remove: pids_to_remove = cart_df.loc[indices_to_remove, 'ProductID'].tolist()
