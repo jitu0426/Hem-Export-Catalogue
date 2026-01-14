@@ -385,13 +385,12 @@ def generate_table_of_contents_html(df_sorted):
     <style>
         .toc-title { text-align: center; font-family: serif; font-size: 32pt; color: #222; margin-bottom: 30px; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; }
         
-        /* Updated to use BLOCK for safer pagination */
         .index-grid-container { 
             display: block; width: 100%; margin: 0 auto; font-size: 0;
         }
         
         a.index-card-link { 
-            display: inline-block; /* Inline-Block is safest for multi-page rendering */
+            display: inline-block; 
             width: 30%; 
             margin: 1.5%; height: 200px; 
             background-color: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); 
@@ -449,10 +448,7 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         @page {{ size: A4; margin: 0; }}
         * {{ box-sizing: border-box; }} 
         
-        /* CRITICAL FIX FOR SERVER-SIDE PDF GENERATION:
-           We removed 'height: 100%' from html/body. 
-           This allows the document to grow infinitely across multiple pages.
-        */
+        /* CRITICAL FIX FOR SERVER-SIDE PDF GENERATION */
         html, body {{ 
             margin: 0 !important; 
             padding: 0 !important; 
@@ -481,13 +477,10 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         .cover-image-container img {{ width: 100%; height: 100%; object-fit: cover; }}
         .clearfix::after {{ content: ""; clear: both; display: table; }}
         
-        /* LAYOUT FIX:
-           Using 'display: block' for the container and 'display: inline-block' for the cards.
-           This is the most robust method for multi-page PDF generation on Linux servers.
-        */
+        /* LAYOUT FIX: INLINE-BLOCK */
         .category-block {{ 
             display: block; 
-            font-size: 0; /* Clears whitespace between inline-blocks */
+            font-size: 0; 
             clear: both; 
             page-break-inside: auto; 
             margin-bottom: 20px; 
@@ -500,11 +493,11 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         }}
 
         .product-card {{ 
-            display: inline-block; /* Treated like text characters that wrap */
+            display: inline-block; 
             width: 23%; 
             margin: 10px 1%; 
             vertical-align: top;
-            font-size: 12pt; /* Reset font size for text inside */
+            font-size: 12pt;
             padding: 5px; box-sizing: border-box; background-color: #fcfcfc; border: 1px solid #E5C384; 
             border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;
             page-break-inside: avoid; 
@@ -547,14 +540,23 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
             current_subcategory = None
             safe_category_id = create_safe_id(current_category)
             
-            # Start new Category Block (Standard Block with inline-block children)
+            # COPY FIX: Added .copy() to ensure safe execution
+            if current_category in case_selection_map:
+                try:
+                    # Logic is handled by the selection_map dict passed in
+                    row_data = case_selection_map[current_category]
+                except:
+                    row_data = {}
+            else:
+                row_data = {}
+
+            # Start new Category Block
             html_parts.append('<div class="category-block clearfix">') 
             category_open = True
             
             html_parts.append(f'<h2 class="category-heading" id="category-{safe_category_id}"><a href="#main-index" style="float: right; font-size: 10px; color: #555; text-decoration: none; font-weight: normal; font-family: sans-serif; margin-top: 4px;">BACK TO INDEX &uarr;</a>{current_category}</h2>')
             
-            if current_category in case_selection_map:
-                row_data = case_selection_map[current_category]
+            if row_data:
                 desc = row_data.get('Description', '')
                 if desc: html_parts.append(f'<div class="case-size-info"><strong>Case Size:</strong> {desc}</div>')
                 
@@ -573,8 +575,7 @@ def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         if sub_val.upper() != 'N/A' and sub_val.lower() != 'nan' and sub_val != '':
             if sub_val != current_subcategory:
                 current_subcategory = sub_val
-                # To ensure the header breaks to a new line, we wrap it in a full-width block
-                html_parts.append(f'<div style="width: 100%; display: block;"><div class="subcat-pdf-header">{current_subcategory}</div></div>')
+                html_parts.append(f'<div class="subcat-pdf-header">{current_subcategory}</div>')
 
         # 4. PRODUCT CARD
         img_b64 = row["ImageB64"] 
@@ -684,11 +685,10 @@ if True:
         
         st.markdown("---")
         st.markdown("### 🔄 Data Sync")
-        if st.button("Refresh Cloudinary & Excel", help="..."):
+        if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file."):
             st.session_state.data_timestamp = time.time()
-            st.cache_data.clear()  # <--- This deletes the "old" list of images
-            st.rerun()             # <--- This restarts the app
-        
+            st.cache_data.clear()
+            st.rerun()
 
     st.title("HEM PRODUCT CATALOGUE")
     tab1, tab2, tab3 = st.tabs(["1. Filter", "2. Review", "3. Export"])
@@ -734,6 +734,8 @@ if True:
                             for category in sel_cats_multi:
                                 cat_data = catalog_subset_df[catalog_subset_df['Category'] == category]
                                 raw_subs = sorted(cat_data['Subcategory'].unique())
+                                
+                                # FIX 3: Safe string conversion in loop + COPY() fix
                                 clean_subs = [s for s in raw_subs if str(s).strip().upper() != 'N/A' and str(s).strip().lower() != 'nan' and str(s).strip() != '']
                                 
                                 if clean_subs:
@@ -807,7 +809,7 @@ if True:
                 if not suffix_col: st.error(f"Could not find 'Carton Suffix' column. Found: {full_case_size_df.columns.tolist()}")
                 else:
                     for cat in cart_categories:
-                        # FIX: Added .copy() here to fix the SettingWithCopyWarning
+                        # FIX 4: Added .copy() here to fix the SettingWithCopyWarning
                         options = full_case_size_df[full_case_size_df['Category'] == cat].copy()
                         if not options.empty:
                             options['DisplayLabel'] = options.apply(lambda x: f"{x[suffix_col]} (CBM: {x[cbm_col]})", axis=1)
@@ -816,7 +818,7 @@ if True:
                             selected_row = options[options['DisplayLabel'] == selected_label].iloc[0]
                             selection_map[cat] = selected_row.to_dict()
                         else: st.warning(f"No Case Size options found for category: {cat}")
-                        
+            
             st.markdown("---")
             name = st.text_input("Client Name", "Valued Client")
             
@@ -856,5 +858,3 @@ if True:
                 if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary")
             with c_excel:
                 if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary")
-
-
