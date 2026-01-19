@@ -6,8 +6,45 @@ import shutil
 import uuid
 from fuzzywuzzy import fuzz
 
-# --- CONFIG & PATHS ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# --- 1. PAGE CONFIG (Must be the first Streamlit command) ---
+st.set_page_config(page_title="HEM ADMIN BACKEND", layout="wide")
+
+# --- 2. PASSWORD PROTECTION ---
+def check_password():
+    """Returns `True` if the user had the correct password."""
+    def password_entered():
+        # Checks against the secret you set on Streamlit Cloud
+        if st.session_state["password"] == st.secrets["admin_password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # First run, show input
+        st.text_input("Enter Admin Password", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        # Password incorrect, show input again
+        st.text_input("Enter Admin Password", type="password", on_change=password_entered, key="password")
+        st.error("😕 Password incorrect")
+        return False
+    else:
+        # Password correct
+        return True
+
+if not check_password():
+    st.stop()  # STOP EXECUTION HERE if password is wrong
+
+# =========================================================
+#      👇 AUTHENTICATED ADMIN CODE STARTS BELOW 👇
+# =========================================================
+
+# --- CONFIG & PATHS (UPDATED FOR PAGES FOLDER) ---
+# Since this file is in 'pages/', we need to go up one level ('..') to find 'data' and 'images'
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(CURRENT_DIR) # Go up to Project Root
+
 DB_DIR = os.path.join(BASE_DIR, "data")
 DB_PATH = os.path.join(DB_DIR, "database.json")
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
@@ -57,7 +94,6 @@ def save_db(db):
     with open(DB_PATH, 'w') as f: json.dump(db, f, indent=4)
 
 # --- UI SETUP ---
-st.set_page_config(page_title="HEM ADMIN BACKEND", layout="wide")
 db = load_db()
 
 # SIDEBAR NAVIGATION
@@ -74,6 +110,11 @@ with st.sidebar:
         "8. New Product Tagging",
         "🔄 Initial Sync"
     ])
+    
+    st.divider()
+    if st.button("Logout"):
+        del st.session_state["password_correct"]
+        st.rerun()
 
 # --- TAB 1 & 2: IMAGES ---
 if menu in ["1. Cover Page Image", "2. Our Story Image"]:
