@@ -34,7 +34,6 @@ try:
         HAS_WEASYPRINT = False
 
     # --- 2. CLOUDINARY CONFIG ---
-    # [Rest of Cloudinary config remains the same]
     cloudinary.config(
         cloud_name = "dddtoqebz",
         api_key = "923925294516228",
@@ -48,7 +47,6 @@ try:
         try:
             img = None
             if str(url_or_path).startswith("http"):
-                # Add headers to mimic browser to avoid 403 Forbidden
                 headers = {"User-Agent": "Mozilla/5.0"}
                 response = requests.get(url_or_path, headers=headers, timeout=5)
                 if response.status_code != 200:
@@ -65,11 +63,9 @@ try:
                 img = img.resize(resize) 
             
             buffered = io.BytesIO()
-            # Force RGB for JPEG compatibility
             if img.mode != "RGB":
                 img = img.convert("RGB")
             
-            # Save as JPEG with 85% quality to save space
             img.save(buffered, format="JPEG", quality=85)
             return base64.b64encode(buffered.getvalue()).decode()
             
@@ -88,7 +84,6 @@ try:
         return text
 
     def force_light_theme_setup():
-        # [Theme setup code remains the same]
         config_dir = ".streamlit"
         config_path = os.path.join(config_dir, "config.toml")
         if not os.path.exists(config_dir): os.makedirs(config_dir)
@@ -100,7 +95,6 @@ try:
     force_light_theme_setup()
     st.set_page_config(page_title="HEM PRODUCT CATALOGUE", page_icon="🛍️", layout="wide")
 
-    # [CSS Styles remain the same]
     st.markdown("""
         <style>
             .stApp { background-color: #ffffff !important; color: #000000 !important; }
@@ -112,7 +106,6 @@ try:
     """, unsafe_allow_html=True)
 
     # --- 5. PATHS ---
-    # [Paths remain the same]
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
     TEMPLATES_DIR = os.path.join(BASE_DIR, "templates") 
@@ -152,13 +145,10 @@ try:
                     break
             if found_path: CONFIG = pdfkit.configuration(wkhtmltopdf=found_path)
         else:
-            # Linux/Server environment
             try:
-                # Try finding it in path
                 path_wkhtmltopdf = subprocess.check_output(['which', 'wkhtmltopdf']).decode('utf-8').strip()
                 CONFIG = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
             except:
-                # Try a common default location
                 if os.path.exists('/usr/bin/wkhtmltopdf'):
                     CONFIG = pdfkit.configuration(wkhtmltopdf='/usr/bin/wkhtmltopdf')
                 else:
@@ -168,7 +158,6 @@ try:
         CONFIG = None
 
     # --- 7. TEMPLATE MANAGEMENT ---
-    # [Template functions remain the same]
     def load_saved_templates():
         if not os.path.exists(SAVED_TEMPLATES_FILE): return {}
         try: 
@@ -184,13 +173,13 @@ try:
         except Exception as e:
             st.error(f"Failed to save template: {e}")
 
-    # --- 8. DATA LOADING ---
-    @st.cache_data(show_spinner="Syncing with Cloudinary & Excel...")
+    # --- 8. DATA LOADING (UPDATED FOR SYNC) ---
+    @st.cache_data(show_spinner="Syncing Data...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # A. Cloudinary
+        # A. Cloudinary Setup
         cloudinary_map = {}
         try:
             cloudinary.api.ping()
@@ -203,57 +192,93 @@ try:
             st.warning(f"⚠️ Cloudinary Warning: {e}")
             cloudinary_map = {} 
 
-        # B. Excel
-        for catalogue_name, excel_path in CATALOGUE_PATHS.items():
-            if not os.path.exists(excel_path): continue
+        # >>> B. CHECK ADMIN DATABASE FIRST <<<
+        DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
+        IMAGE_DIR = os.path.join(BASE_DIR, "images")
+        data_loaded_from_db = False
+
+        if os.path.exists(DB_PATH):
             try:
-                df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
-                df = df.fillna("") 
+                with open(DB_PATH, 'r') as f:
+                    db_data = json.load(f)
                 
-                df.columns = [str(c).strip() for c in df.columns]
-                df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
-                
-                df['Catalogue'] = catalogue_name
-                df['Packaging'] = 'Default Packaging'
-                df["ImageB64"] = "" 
-                df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
-                df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
-
-                for col in required_output_cols:
-                    if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
-
-                # C. Image Matching
-                if cloudinary_map:
+                if db_data.get("products"):
+                    df = pd.DataFrame(db_data["products"])
+                    # Map Admin keys to App keys
+                    df.rename(columns={"SKUCode": "SKU Code"}, inplace=True)
+                    
+                    # Ensure cols exist
+                    for col in required_output_cols:
+                        if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
+                    
+                    df['Packaging'] = 'Default Packaging'
+                    df["ImageB64"] = "" 
+                    df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
+                    
+                    # Image Logic: Local > Cloud
                     for index, row in df.iterrows():
-                        row_item_key = clean_key(row['ItemName'])
-                        found_url = None
-                        if row_item_key in cloudinary_map:
-                            found_url = cloudinary_map[row_item_key]
+                        sku = str(row.get('SKU Code', '')).strip()
+                        local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
+                        
+                        if os.path.exists(local_img_path):
+                             df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(200, 200))
                         else:
-                            best_score = 0
-                            for cloud_key, url in cloudinary_map.items():
-                                score = fuzz.token_sort_ratio(row_item_key, cloud_key)
-                                if score > best_score:
-                                    best_score = score
-                                    found_url = url
-                            if best_score < 75: found_url = None
-
-                        if found_url:
-                            # Note: Loading base64 here might be heavy for huge datasets. 
-                            # If memory crashes persist, consider storing URL here and fetching base64 JIT during PDF gen.
-                            # For now, we use the resizing function to keep it light.
-                            df.loc[index, "ImageB64"] = get_image_as_base64_str(found_url, max_size=(200, 200)) # Smaller thumb for preview
-                
-                all_data.append(df[required_output_cols])
+                            row_item_key = clean_key(row['ItemName'])
+                            if row_item_key in cloudinary_map:
+                                df.loc[index, "ImageB64"] = get_image_as_base64_str(cloudinary_map[row_item_key], max_size=(200, 200))
+                    
+                    return df[required_output_cols]
             except Exception as e:
-                st.error(f"Error reading Excel {catalogue_name}: {e}")
+                print(f"Admin DB Load Failed: {e}. Falling back to Excel.")
+                data_loaded_from_db = False
 
-        if not all_data: return pd.DataFrame(columns=required_output_cols)
-        full_df = pd.concat(all_data, ignore_index=True)
-        return full_df
+        # C. Excel Fallback (Original Logic)
+        if not data_loaded_from_db:
+            for catalogue_name, excel_path in CATALOGUE_PATHS.items():
+                if not os.path.exists(excel_path): continue
+                try:
+                    df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
+                    df = df.fillna("") 
+                    
+                    df.columns = [str(c).strip() for c in df.columns]
+                    df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
+                    
+                    df['Catalogue'] = catalogue_name
+                    df['Packaging'] = 'Default Packaging'
+                    df["ImageB64"] = "" 
+                    df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
+                    df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
+
+                    for col in required_output_cols:
+                        if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
+
+                    if cloudinary_map:
+                        for index, row in df.iterrows():
+                            row_item_key = clean_key(row['ItemName'])
+                            found_url = None
+                            if row_item_key in cloudinary_map:
+                                found_url = cloudinary_map[row_item_key]
+                            else:
+                                best_score = 0
+                                for cloud_key, url in cloudinary_map.items():
+                                    score = fuzz.token_sort_ratio(row_item_key, cloud_key)
+                                    if score > best_score:
+                                        best_score = score
+                                        found_url = url
+                                if best_score < 75: found_url = None
+
+                            if found_url:
+                                df.loc[index, "ImageB64"] = get_image_as_base64_str(found_url, max_size=(200, 200))
+                    
+                    all_data.append(df[required_output_cols])
+                except Exception as e:
+                    st.error(f"Error reading Excel {catalogue_name}: {e}")
+
+            if not all_data: return pd.DataFrame(columns=required_output_cols)
+            full_df = pd.concat(all_data, ignore_index=True)
+            return full_df
 
     # --- 9. CART UTILS ---
-    # [Cart functions remain the same]
     def add_to_cart(selected_df):
         current_pids = {item["ProductID"] for item in st.session_state.cart}
         new_items = []
@@ -351,7 +376,6 @@ try:
     """
 
     def generate_story_html(story_img_1_b64):
-        # [Content remains the same]
         text_block_1 = """HEM Corporation is amongst top global leaders in the manufacturing and export of perfumed agarbattis. For over three decades now we have been parceling out high-quality masala sticks, agarbattis, dhoops, and cones to our customers in more than 70 countries. We are known and established for our superior quality products.<br><br>HEM has been showered with love and accolades all across the globe for its diverse range of products. This makes us the most preferred brand the world over. HEM has been awarded as the ‘Top Exporters’ brand, for incense sticks by the ‘Export Promotion Council for Handicraft’ (EPCH) for three consecutive years from 2008 till 2011.<br><br>We have also been awarded “Niryat Shree” (Export) Silver Trophy in the Handicraft category by ‘Federation of Indian Export Organization’ (FIEO). The award was presented to us by the then Honourable President of India, late Shri Pranab Mukherjee."""
         text_journey_1 = """From a brand that was founded by three brothers in 1983, HEM Fragrances has come a long way. HEM started as a simple incense store offering products like masala agarbatti, thuribles, incense burner and dhoops. However, with time, there was a huge evolution in the world of fragrances much that the customers' needs also started changing. HEM incense can be experienced not only to provide you with rich aromatic experience but also create a perfect ambience for your daily prayers, meditation, and yoga.<br><br>The concept of aromatherapy massage, burning incense sticks and incense herbs for spiritual practices, using aromatherapy diffuser oils to promote healing and relaxation or using palo santo incense to purify and cleanse a space became popular around the world.<br><br>So, while we remained focused on creating our signature line of products, especially the ‘HEM Precious’ range which is a premium flagship collection, there was a dire need to expand our portfolio to meet increasing customer demands."""
         
@@ -377,7 +401,6 @@ try:
         return html
 
     def generate_table_of_contents_html(df_sorted):
-        # [Function content remains the same]
         categories_data = []
         seen_categories = set()
         unique_categories = []
@@ -436,7 +459,6 @@ try:
         return toc_html
 
     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
-        # ROBUST LOADING
         def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
             paths_to_check = []
             if specific_full_path: paths_to_check.append(specific_full_path)
@@ -460,8 +482,6 @@ try:
 
         watermark_b64 = load_img_robust("watermark.png", resize=False)
 
-        # CSS
-        # DIAGNOSIS FIX: Removed height:100% from body, Switched to inline-block for product cards
         CSS_STYLES = f"""
             <!DOCTYPE html>
             <html><head><meta charset="UTF-8">
@@ -469,7 +489,6 @@ try:
             @page {{ size: A4; margin: 0; }}
             * {{ box-sizing: border-box; }} 
             
-            /* CRITICAL FIX FOR SERVER-SIDE PDF GENERATION */
             html, body {{ 
                 margin: 0 !important; 
                 padding: 0 !important; 
@@ -498,7 +517,6 @@ try:
             .cover-image-container img {{ width: 100%; height: 100%; object-fit: cover; }}
             .clearfix::after {{ content: ""; clear: both; display: table; }}
             
-            /* LAYOUT FIX: INLINE-BLOCK */
             .category-block {{ 
                 display: block; 
                 font-size: 0; 
@@ -555,23 +573,20 @@ try:
 
             # 2. CATEGORY HEADER
             if row['Category'] != current_category:
-                if category_open: html_parts.append('</div>') # Close previous category block
+                if category_open: html_parts.append('</div>') 
                 
                 current_category = row['Category']
                 current_subcategory = None
                 safe_category_id = create_safe_id(current_category)
                 
-                # COPY FIX: Added .copy() to ensure safe execution
                 if current_category in case_selection_map:
                     try:
-                        # Logic is handled by the selection_map dict passed in
                         row_data = case_selection_map[current_category]
                     except:
                         row_data = {}
                 else:
                     row_data = {}
 
-                # Start new Category Block
                 html_parts.append('<div class="category-block clearfix">') 
                 category_open = True
                 
@@ -599,13 +614,10 @@ try:
                     html_parts.append(f'<div class="subcat-pdf-header">{current_subcategory}</div>')
 
             # 4. PRODUCT CARD
-            # MEMORY FIX: JIT Conversion of ImageURL to Base64 with STRICT JPEG
             img_url = row.get("ImageB64", "")
             if not img_url.startswith("http"):
-                 # Handle case where it might already be base64 (local) or just empty
                  pass
             else:
-                 # It's a URL, convert JIT
                  img_b64 = get_image_as_base64_str(img_url)
                  row["ImageB64"] = img_b64
 
@@ -703,23 +715,20 @@ try:
             st.header("📂 Manage Templates")
             with st.expander("Save Current Cart"):
                 new_template_name = st.text_input("Template Name")
-                # AUDIT: REPLACED use_container_width
-                if st.button("Save Template", width="stretch"):
+                if st.button("Save Template", use_container_width=True):
                     if new_template_name: save_template_to_disk(new_template_name, st.session_state.cart)
             saved_templates = load_saved_templates()
             if saved_templates:
                 with st.expander("Load Template"):
                     sel_temp = st.selectbox("Select Template", list(saved_templates.keys()))
-                    # AUDIT: REPLACED use_container_width
-                    if st.button("Load", width="stretch"):
+                    if st.button("Load", use_container_width=True):
                         st.session_state.cart = saved_templates[sel_temp]
                         st.toast(f"Template '{sel_temp}' loaded!", icon="✅")
                         st.rerun()
             
             st.markdown("---")
             st.markdown("### 🔄 Data Sync")
-            # AUDIT: REPLACED use_container_width
-            if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file.", width="stretch"):
+            if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file.", use_container_width=True):
                 st.session_state.data_timestamp = time.time()
                 st.cache_data.clear()
                 st.rerun()
@@ -728,7 +737,7 @@ try:
         tab1, tab2, tab3 = st.tabs(["1. Filter", "2. Review", "3. Export"])
         
         with tab1:
-            if products_df.empty: st.error("No Data. Please check Excel file paths.")
+            if products_df.empty: st.error("No Data. Please check Excel file paths or run Admin Sync.")
             else:
                 final_df = products_df.copy()
                 def update_search(): st.session_state.item_search_query = st.session_state["item_search_input"]
@@ -769,7 +778,6 @@ try:
                                     cat_data = catalog_subset_df[catalog_subset_df['Category'] == category]
                                     raw_subs = sorted(cat_data['Subcategory'].unique())
                                     
-                                    # FIX 3: Safe string conversion in loop + COPY() fix
                                     clean_subs = [s for s in raw_subs if str(s).strip().upper() != 'N/A' and str(s).strip().lower() != 'nan' and str(s).strip() != '']
                                     
                                     if clean_subs:
@@ -785,10 +793,9 @@ try:
                                 final_df = catalog_subset_df
                     with col_btns:
                         st.markdown("#### Actions")
-                        # AUDIT: REPLACED use_container_width
-                        if st.button("ADD SELECTED", width="stretch", type="primary"): add_selected_visible_to_cart(final_df) 
-                        if st.button("ADD FILTERED", width="stretch", type="secondary"): add_to_cart(final_df) 
-                        st.button("Clear Filters", width="stretch", on_click=clear_filters_dropdown)
+                        if st.button("ADD SELECTED", use_container_width=True, type="primary"): add_selected_visible_to_cart(final_df) 
+                        if st.button("ADD FILTERED", use_container_width=True, type="secondary"): add_to_cart(final_df) 
+                        st.button("Clear Filters", use_container_width=True, on_click=clear_filters_dropdown)
 
                     st.markdown("---")
                     if sel_cat != NO_SELECTION_PLACEHOLDER:
@@ -805,8 +812,7 @@ try:
                 
                 cart_df['Remove'] = False
                 editable_df_view = cart_df[['Catalogue', 'Category', 'ItemName', 'Remove']]
-                # AUDIT: REPLACED use_container_width
-                edited_df = st.data_editor(editable_df_view, column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False, width="small"), "Catalogue": st.column_config.TextColumn("Catalogue Source", width="medium"), "Category": st.column_config.TextColumn("Category", width="medium"), "ItemName": st.column_config.TextColumn("Product Name", width="large")}, hide_index=True, key="cart_data_editor_fixed", width="stretch")
+                edited_df = st.data_editor(editable_df_view, column_config={"Remove": st.column_config.CheckboxColumn("Remove?", default=False, width="small"), "Catalogue": st.column_config.TextColumn("Catalogue Source", width="medium"), "Category": st.column_config.TextColumn("Category", width="medium"), "ItemName": st.column_config.TextColumn("Product Name", width="large")}, hide_index=True, key="cart_data_editor_fixed", use_container_width=True)
                 
                 indices_to_remove = edited_df[edited_df['Remove'] == True].index.tolist()
                 if indices_to_remove: pids_to_remove = cart_df.loc[indices_to_remove, 'ProductID'].tolist()
@@ -814,11 +820,11 @@ try:
                 
                 c_remove, c_clear = st.columns([1, 1])
                 with c_remove:
-                    if st.button(f"Remove {len(pids_to_remove)} Selected Items", disabled=not pids_to_remove, width="stretch"): 
+                    if st.button(f"Remove {len(pids_to_remove)} Selected Items", disabled=not pids_to_remove, use_container_width=True): 
                         remove_from_cart(pids_to_remove)
                         st.rerun()
                 with c_clear:
-                    if st.button("Clear Cart", width="stretch"): 
+                    if st.button("Clear Cart", use_container_width=True): 
                         st.session_state.cart = [] 
                         st.session_state.gen_pdf_bytes = None
                         st.session_state.gen_excel_bytes = None
@@ -827,12 +833,25 @@ try:
 
         with tab3:
             st.markdown('## Export Catalogue')
-            if not st.session_state.cart: st.info("Cart is empty.")
+            if not st.session_state.cart: 
+                st.info("Cart is empty.")
             else:
                 st.markdown("### 1. Select Case Sizes per Category")
                 cart_categories = sorted(list(set([item['Category'] for item in st.session_state.cart])))
                 full_case_size_df = pd.DataFrame()
-                if os.path.exists(CASE_SIZE_PATH):
+
+                # --- NEW: LOAD FROM ADMIN DB FIRST ---
+                DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
+                if os.path.exists(DB_PATH):
+                    try:
+                        with open(DB_PATH, 'r') as f:
+                            db_data = json.load(f)
+                        if db_data.get("case_sizes"):
+                            full_case_size_df = pd.DataFrame(db_data["case_sizes"])
+                    except: pass
+                
+                # Fallback to Excel
+                if full_case_size_df.empty and os.path.exists(CASE_SIZE_PATH):
                     try:
                         full_case_size_df = pd.read_excel(CASE_SIZE_PATH, dtype=str)
                         full_case_size_df.columns = [c.strip() for c in full_case_size_df.columns]
@@ -840,15 +859,17 @@ try:
 
                 selection_map = {}
                 if not full_case_size_df.empty:
+                    # Determine columns dynamically
                     suffix_col = next((c for c in full_case_size_df.columns if "suffix" in c.lower()), None)
                     cbm_col = next((c for c in full_case_size_df.columns if "cbm" in c.lower()), "CBM")
-                    if not suffix_col: st.error(f"Could not find 'Carton Suffix' column. Found: {full_case_size_df.columns.tolist()}")
+                    
+                    if not suffix_col: 
+                        st.error(f"Could not find 'Carton Suffix' column. Found: {full_case_size_df.columns.tolist()}")
                     else:
                         for cat in cart_categories:
-                            # FIX 4: Added .copy() here to fix the SettingWithCopyWarning
                             options = full_case_size_df[full_case_size_df['Category'] == cat].copy()
                             if not options.empty:
-                                options['DisplayLabel'] = options.apply(lambda x: f"{x[suffix_col]} (CBM: {x[cbm_col]})", axis=1)
+                                options['DisplayLabel'] = options.apply(lambda x: f"{x.get(suffix_col, '')} (CBM: {x.get(cbm_col, '')})", axis=1)
                                 label_list = options['DisplayLabel'].tolist()
                                 selected_label = st.selectbox(f"Select Case Size for **{cat}**", label_list, key=f"select_case_{cat}")
                                 selected_row = options[options['DisplayLabel'] == selected_label].iloc[0]
@@ -858,8 +879,7 @@ try:
                 st.markdown("---")
                 name = st.text_input("Client Name", "Valued Client")
                 
-                # AUDIT: REPLACED use_container_width
-                if st.button("Generate Catalogue & Order Sheet", width="stretch"):
+                if st.button("Generate Catalogue & Order Sheet", use_container_width=True):
                     cart_data = st.session_state.cart
                     schema_cols = ['Catalogue', 'Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'ImageB64', 'Packaging', 'IsNew']
                     df_final = pd.DataFrame(cart_data)
@@ -886,8 +906,6 @@ try:
                         else:
                             st.error("❌ No PDF engine found! (Install 'wkhtmltopdf' locally or 'weasyprint' on server).")
                             st.session_state.gen_pdf_bytes = None
-                        
-                        # Memory cleanup
                         gc.collect()
 
                     except Exception as e: 
@@ -896,11 +914,9 @@ try:
 
                 c_pdf, c_excel = st.columns(2)
                 with c_pdf:
-                    # AUDIT: REPLACED use_container_width
-                    if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary", width="stretch")
+                    if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary", use_container_width=True)
                 with c_excel:
-                    # AUDIT: REPLACED use_container_width
-                    if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary", width="stretch")
+                    if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary", use_container_width=True)
 
 # --- SAFETY BOOT CATCH-ALL ---
 except Exception as e:
