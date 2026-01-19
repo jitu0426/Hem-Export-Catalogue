@@ -833,51 +833,76 @@ try:
             else: st.info("Cart Empty")
 
         with tab3:
-           # --- INSIDE TAB 3 ---
-            st.markdown("### 1. Select Case Sizes per Category")
-            cart_categories = sorted(list(set([item['Category'] for item in st.session_state.cart])))
-            full_case_size_df = pd.DataFrame()
-            
-            # >>> NEW SYNC LOGIC <<<
-            DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
-            
-            # 1. Try Loading from Admin JSON
-            if os.path.exists(DB_PATH):
-                try:
-                    with open(DB_PATH, 'r') as f:
-                        db_data = json.load(f)
-                    if db_data.get("case_sizes"):
-                        full_case_size_df = pd.DataFrame(db_data["case_sizes"])
-                except:
-                    pass
+            st.markdown('## Export Catalogue')
+            if not st.session_state.cart: 
+                st.info("Cart is empty.")
+            else:
+                st.markdown("### 1. Select Case Sizes per Category")
+                cart_categories = sorted(list(set([item['Category'] for item in st.session_state.cart])))
+                full_case_size_df = pd.DataFrame()
 
-            # 2. Fallback to Excel if JSON didn't work/was empty
-            if full_case_size_df.empty and os.path.exists(CASE_SIZE_PATH):
-                try:
-                    full_case_size_df = pd.read_excel(CASE_SIZE_PATH, dtype=str)
-                    full_case_size_df.columns = [c.strip() for c in full_case_size_df.columns]
-                except: st.error("Error loading Case Size data")
+                # >>> NEW SYNC LOGIC: Load from Admin DB first <<<
+                DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
+                
+                # 1. Try Loading from Admin JSON
+                if os.path.exists(DB_PATH):
+                    try:
+                        with open(DB_PATH, 'r') as f:
+                            db_data = json.load(f)
+                        if db_data.get("case_sizes"):
+                            full_case_size_df = pd.DataFrame(db_data["case_sizes"])
+                    except:
+                        pass
+
+                # 2. Fallback to Excel if JSON didn't work/was empty
+                if full_case_size_df.empty and os.path.exists(CASE_SIZE_PATH):
+                    try:
+                        full_case_size_df = pd.read_excel(CASE_SIZE_PATH, dtype=str)
+                        full_case_size_df.columns = [c.strip() for c in full_case_size_df.columns]
+                    except: 
+                        st.error("Error loading Case Size data")
+
+                # 3. Prepare Selection Logic (This was missing/misaligned)
+                selection_map = {}
+                
+                if not full_case_size_df.empty:
+                    # Identify dynamic columns
+                    suffix_col = next((c for c in full_case_size_df.columns if "suffix" in c.lower()), None)
+                    cbm_col = next((c for c in full_case_size_df.columns if "cbm" in c.lower()), "CBM")
+                    
+                    if not suffix_col: 
+                        st.error(f"Could not find 'Carton Suffix' column. Found: {full_case_size_df.columns.tolist()}")
+                    else:
+                        # 4. Iterate Categories (The loop that was causing the error)
                         for cat in cart_categories:
-                            # FIX 4: Added .copy() here to fix the SettingWithCopyWarning
+                            # Filter for specific category
                             options = full_case_size_df[full_case_size_df['Category'] == cat].copy()
+                            
                             if not options.empty:
-                                options['DisplayLabel'] = options.apply(lambda x: f"{x[suffix_col]} (CBM: {x[cbm_col]})", axis=1)
+                                options['DisplayLabel'] = options.apply(lambda x: f"{x.get(suffix_col, '')} (CBM: {x.get(cbm_col, '')})", axis=1)
                                 label_list = options['DisplayLabel'].tolist()
+                                
+                                # Create Selectbox
                                 selected_label = st.selectbox(f"Select Case Size for **{cat}**", label_list, key=f"select_case_{cat}")
+                                
+                                # Store selection
                                 selected_row = options[options['DisplayLabel'] == selected_label].iloc[0]
                                 selection_map[cat] = selected_row.to_dict()
-                            else: st.warning(f"No Case Size options found for category: {cat}")
+                            else:
+                                st.warning(f"No Case Size options found for category: {cat}")
                 
                 st.markdown("---")
                 name = st.text_input("Client Name", "Valued Client")
                 
-                # AUDIT: REPLACED use_container_width
-                if st.button("Generate Catalogue & Order Sheet", width="stretch"):
+                # Generate Button Logic
+                if st.button("Generate Catalogue & Order Sheet", use_container_width=True):
                     cart_data = st.session_state.cart
                     schema_cols = ['Catalogue', 'Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'ImageB64', 'Packaging', 'IsNew']
                     df_final = pd.DataFrame(cart_data)
+                    
                     for col in schema_cols: 
                         if col not in df_final.columns: df_final[col] = ''
+                            
                     df_final = df_final[schema_cols].sort_values(['Catalogue', 'Category', 'Subcategory'])
                     df_final['SerialNo'] = range(1, len(df_final)+1)
                     
@@ -900,7 +925,6 @@ try:
                             st.error("❌ No PDF engine found! (Install 'wkhtmltopdf' locally or 'weasyprint' on server).")
                             st.session_state.gen_pdf_bytes = None
                         
-                        # Memory cleanup
                         gc.collect()
 
                     except Exception as e: 
@@ -909,15 +933,15 @@ try:
 
                 c_pdf, c_excel = st.columns(2)
                 with c_pdf:
-                    # AUDIT: REPLACED use_container_width
-                    if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary", width="stretch")
+                    if st.session_state.gen_pdf_bytes: 
+                        st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary", use_container_width=True)
                 with c_excel:
-                    # AUDIT: REPLACED use_container_width
-                    if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary", width="stretch")
-
+                    if st.session_state.gen_excel_bytes: 
+                        st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary", use_container_width=True)
 # --- SAFETY BOOT CATCH-ALL ---
 except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
