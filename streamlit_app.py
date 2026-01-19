@@ -1,4 +1,3 @@
-
 import streamlit as st
 import os
 import sys
@@ -186,17 +185,12 @@ try:
             st.error(f"Failed to save template: {e}")
 
     # --- 8. DATA LOADING ---
-   # --- 8. DATA LOADING (UPDATED FOR SYNC) ---
-    @st.cache_data(show_spinner="Loading Product Data...")
+    @st.cache_data(show_spinner="Syncing with Cloudinary & Excel...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # PATH TO ADMIN DATABASE
-        DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
-        IMAGE_DIR = os.path.join(BASE_DIR, "images") # Local images from Admin
-
-        # 1. CLOUDINARY SETUP (Keep existing logic)
+        # A. Cloudinary
         cloudinary_map = {}
         try:
             cloudinary.api.ping()
@@ -206,58 +200,57 @@ try:
                 c_key = clean_key(public_id)
                 cloudinary_map[c_key] = res['secure_url']
         except Exception as e:
-            print(f"Cloudinary Error: {e}")
+            st.warning(f"⚠️ Cloudinary Warning: {e}")
+            cloudinary_map = {} 
 
-        # 2. CHECK FOR ADMIN DATABASE
-        if os.path.exists(DB_PATH):
-            # >>> LOAD FROM ADMIN JSON <<<
+        # B. Excel
+        for catalogue_name, excel_path in CATALOGUE_PATHS.items():
+            if not os.path.exists(excel_path): continue
             try:
-                with open(DB_PATH, 'r') as f:
-                    db_data = json.load(f)
+                df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
+                df = df.fillna("") 
                 
-                if db_data.get("products"):
-                    df = pd.DataFrame(db_data["products"])
-                    
-                    # Map Admin JSON keys to Main App keys
-                    # Admin uses 'SKUCode', Main uses 'SKU Code'. Let's standardize.
-                    df.rename(columns={"SKUCode": "SKU Code"}, inplace=True)
-                    
-                    # Ensure columns exist
-                    for col in required_output_cols:
-                        if col not in df.columns: 
-                            df[col] = '' if col != 'IsNew' else 0
-                    
-                    # Generate IDs and defaults
-                    df['Packaging'] = 'Default Packaging'
-                    df["ImageB64"] = "" 
-                    df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
-                    
-                    # --- IMAGE LOGIC (Priority: Local Admin Image > Cloudinary) ---
-                    for index, row in df.iterrows():
-                        sku = str(row.get('SKU Code', '')).strip()
-                        local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
-                        
-                        # A. Check Local Admin Folder
-                        if os.path.exists(local_img_path):
-                             df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(200, 200))
-                        
-                        # B. Fallback to Cloudinary if no local image
-                        else:
-                            row_item_key = clean_key(row['ItemName'])
-                            if row_item_key in cloudinary_map:
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(cloudinary_map[row_item_key], max_size=(200, 200))
-                    
-                    return df[required_output_cols]
-            except Exception as e:
-                st.error(f"Error reading Admin Database: {e}. Falling back to Excel.")
+                df.columns = [str(c).strip() for c in df.columns]
+                df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
+                
+                df['Catalogue'] = catalogue_name
+                df['Packaging'] = 'Default Packaging'
+                df["ImageB64"] = "" 
+                df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
+                df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
 
-        # 3. FALLBACK TO EXCEL (Your original logic)
-        # ... (Keep your original Excel loading logic here as the 'else' block) ...
-        # For brevity, I am not repeating the original Excel loop here, 
-        # but in your actual file, paste your original Excel loading code here.
-        
-        # If we reached here, it means no JSON or JSON failed. Return empty or Excel data.
-        return pd.DataFrame(columns=required_output_cols)
+                for col in required_output_cols:
+                    if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
+
+                # C. Image Matching
+                if cloudinary_map:
+                    for index, row in df.iterrows():
+                        row_item_key = clean_key(row['ItemName'])
+                        found_url = None
+                        if row_item_key in cloudinary_map:
+                            found_url = cloudinary_map[row_item_key]
+                        else:
+                            best_score = 0
+                            for cloud_key, url in cloudinary_map.items():
+                                score = fuzz.token_sort_ratio(row_item_key, cloud_key)
+                                if score > best_score:
+                                    best_score = score
+                                    found_url = url
+                            if best_score < 75: found_url = None
+
+                        if found_url:
+                            # Note: Loading base64 here might be heavy for huge datasets. 
+                            # If memory crashes persist, consider storing URL here and fetching base64 JIT during PDF gen.
+                            # For now, we use the resizing function to keep it light.
+                            df.loc[index, "ImageB64"] = get_image_as_base64_str(found_url, max_size=(200, 200)) # Smaller thumb for preview
+                
+                all_data.append(df[required_output_cols])
+            except Exception as e:
+                st.error(f"Error reading Excel {catalogue_name}: {e}")
+
+        if not all_data: return pd.DataFrame(columns=required_output_cols)
+        full_df = pd.concat(all_data, ignore_index=True)
+        return full_df
 
     # --- 9. CART UTILS ---
     # [Cart functions remain the same]
@@ -834,75 +827,44 @@ try:
 
         with tab3:
             st.markdown('## Export Catalogue')
-            if not st.session_state.cart: 
-                st.info("Cart is empty.")
+            if not st.session_state.cart: st.info("Cart is empty.")
             else:
                 st.markdown("### 1. Select Case Sizes per Category")
                 cart_categories = sorted(list(set([item['Category'] for item in st.session_state.cart])))
                 full_case_size_df = pd.DataFrame()
-
-                # >>> NEW SYNC LOGIC: Load from Admin DB first <<<
-                DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
-                
-                # 1. Try Loading from Admin JSON
-                if os.path.exists(DB_PATH):
-                    try:
-                        with open(DB_PATH, 'r') as f:
-                            db_data = json.load(f)
-                        if db_data.get("case_sizes"):
-                            full_case_size_df = pd.DataFrame(db_data["case_sizes"])
-                    except:
-                        pass
-
-                # 2. Fallback to Excel if JSON didn't work/was empty
-                if full_case_size_df.empty and os.path.exists(CASE_SIZE_PATH):
+                if os.path.exists(CASE_SIZE_PATH):
                     try:
                         full_case_size_df = pd.read_excel(CASE_SIZE_PATH, dtype=str)
                         full_case_size_df.columns = [c.strip() for c in full_case_size_df.columns]
-                    except: 
-                        st.error("Error loading Case Size data")
+                    except: st.error("Error loading Case Size.xlsx")
 
-                # 3. Prepare Selection Logic (This was missing/misaligned)
                 selection_map = {}
-                
                 if not full_case_size_df.empty:
-                    # Identify dynamic columns
                     suffix_col = next((c for c in full_case_size_df.columns if "suffix" in c.lower()), None)
                     cbm_col = next((c for c in full_case_size_df.columns if "cbm" in c.lower()), "CBM")
-                    
-                    if not suffix_col: 
-                        st.error(f"Could not find 'Carton Suffix' column. Found: {full_case_size_df.columns.tolist()}")
+                    if not suffix_col: st.error(f"Could not find 'Carton Suffix' column. Found: {full_case_size_df.columns.tolist()}")
                     else:
-                        # 4. Iterate Categories (The loop that was causing the error)
                         for cat in cart_categories:
-                            # Filter for specific category
+                            # FIX 4: Added .copy() here to fix the SettingWithCopyWarning
                             options = full_case_size_df[full_case_size_df['Category'] == cat].copy()
-                            
                             if not options.empty:
-                                options['DisplayLabel'] = options.apply(lambda x: f"{x.get(suffix_col, '')} (CBM: {x.get(cbm_col, '')})", axis=1)
+                                options['DisplayLabel'] = options.apply(lambda x: f"{x[suffix_col]} (CBM: {x[cbm_col]})", axis=1)
                                 label_list = options['DisplayLabel'].tolist()
-                                
-                                # Create Selectbox
                                 selected_label = st.selectbox(f"Select Case Size for **{cat}**", label_list, key=f"select_case_{cat}")
-                                
-                                # Store selection
                                 selected_row = options[options['DisplayLabel'] == selected_label].iloc[0]
                                 selection_map[cat] = selected_row.to_dict()
-                            else:
-                                st.warning(f"No Case Size options found for category: {cat}")
+                            else: st.warning(f"No Case Size options found for category: {cat}")
                 
                 st.markdown("---")
                 name = st.text_input("Client Name", "Valued Client")
                 
-                # Generate Button Logic
-                if st.button("Generate Catalogue & Order Sheet", use_container_width=True):
+                # AUDIT: REPLACED use_container_width
+                if st.button("Generate Catalogue & Order Sheet", width="stretch"):
                     cart_data = st.session_state.cart
                     schema_cols = ['Catalogue', 'Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'ImageB64', 'Packaging', 'IsNew']
                     df_final = pd.DataFrame(cart_data)
-                    
                     for col in schema_cols: 
                         if col not in df_final.columns: df_final[col] = ''
-                            
                     df_final = df_final[schema_cols].sort_values(['Catalogue', 'Category', 'Subcategory'])
                     df_final['SerialNo'] = range(1, len(df_final)+1)
                     
@@ -925,6 +887,7 @@ try:
                             st.error("❌ No PDF engine found! (Install 'wkhtmltopdf' locally or 'weasyprint' on server).")
                             st.session_state.gen_pdf_bytes = None
                         
+                        # Memory cleanup
                         gc.collect()
 
                     except Exception as e: 
@@ -933,15 +896,14 @@ try:
 
                 c_pdf, c_excel = st.columns(2)
                 with c_pdf:
-                    if st.session_state.gen_pdf_bytes: 
-                        st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary", use_container_width=True)
+                    # AUDIT: REPLACED use_container_width
+                    if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary", width="stretch")
                 with c_excel:
-                    if st.session_state.gen_excel_bytes: 
-                        st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary", use_container_width=True)
+                    # AUDIT: REPLACED use_container_width
+                    if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary", width="stretch")
+
 # --- SAFETY BOOT CATCH-ALL ---
 except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
-
-
