@@ -174,20 +174,39 @@ try:
             st.error(f"Failed to save template: {e}")
 
     # --- 8. DATA LOADING (UPDATED FOR SYNC) ---
+    # --- 8. DATA LOADING (UPDATED FOR 1000+ IMAGES) ---
     @st.cache_data(show_spinner="Syncing Data...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # A. Cloudinary Setup
+        # A. Cloudinary Setup (FIXED PAGINATION)
         cloudinary_map = {}
         try:
             cloudinary.api.ping()
-            resources = cloudinary.api.resources(type="upload", max_results=500)
-            for res in resources.get('resources', []):
+            resources = []
+            next_cursor = None
+            
+            # Loop to fetch ALL images (handling the 500 limit)
+            while True:
+                res = cloudinary.api.resources(
+                    type="upload", 
+                    max_results=500, 
+                    next_cursor=next_cursor
+                )
+                resources.extend(res.get('resources', []))
+                next_cursor = res.get('next_cursor')
+                
+                # If there are no more pages, stop the loop
+                if not next_cursor:
+                    break
+            
+            # Map the fetched images
+            for res in resources:
                 public_id = res['public_id'].split('/')[-1] 
                 c_key = clean_key(public_id)
                 cloudinary_map[c_key] = res['secure_url']
+                
         except Exception as e:
             st.warning(f"⚠️ Cloudinary Warning: {e}")
             cloudinary_map = {} 
@@ -923,3 +942,4 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
