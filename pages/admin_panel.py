@@ -6,8 +6,57 @@ import shutil
 import uuid
 from fuzzywuzzy import fuzz
 
-# --- CONFIG & PATHS ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# --- 1. PAGE CONFIG (Must be first) ---
+st.set_page_config(page_title="HEM ADMIN BACKEND", layout="wide")
+
+# --- 2. PASSWORD PROTECTION ---
+def check_password():
+    """Returns `True` if the user had the correct password."""
+    def password_entered():
+        if st.session_state["password"] == st.secrets["admin_password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # First run, show input
+        st.text_input("Enter Admin Password", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        # Password incorrect, show input again
+        st.text_input("Enter Admin Password", type="password", on_change=password_entered, key="password")
+        st.error("😕 Password incorrect")
+        return False
+    else:
+        return True
+
+if not check_password():
+    st.stop()  # Stop execution if password incorrect
+
+# =========================================================
+#      👇 SMART PATH SYSTEM (THE CRITICAL FIX) 👇
+# =========================================================
+
+# Get the directory where THIS file (admin_panel.py) is located (inside 'pages')
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Get the Parent Directory (The Project Root)
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+
+# Check where the Excel file actually is to avoid "0 Products" error
+TEST_FILE = "Hem catalogue.xlsx"
+
+if os.path.exists(os.path.join(CURRENT_DIR, TEST_FILE)):
+    BASE_DIR = CURRENT_DIR 
+elif os.path.exists(os.path.join(PROJECT_ROOT, TEST_FILE)):
+    BASE_DIR = PROJECT_ROOT 
+else:
+    # If we can't find it, default to Root but warn the user
+    BASE_DIR = PROJECT_ROOT
+    st.warning(f"⚠️ Could not verify path to '{TEST_FILE}'. Looking in: {PROJECT_ROOT}")
+
+# Define paths relative to the correct BASE_DIR
 DB_DIR = os.path.join(BASE_DIR, "data")
 DB_PATH = os.path.join(DB_DIR, "database.json")
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
@@ -57,7 +106,6 @@ def save_db(db):
     with open(DB_PATH, 'w') as f: json.dump(db, f, indent=4)
 
 # --- UI SETUP ---
-st.set_page_config(page_title="HEM ADMIN BACKEND", layout="wide")
 db = load_db()
 
 # SIDEBAR NAVIGATION
@@ -74,6 +122,11 @@ with st.sidebar:
         "8. New Product Tagging",
         "🔄 Initial Sync"
     ])
+    
+    st.divider()
+    if st.button("Logout"):
+        del st.session_state["password_correct"]
+        st.rerun()
 
 # --- TAB 1 & 2: IMAGES ---
 if menu in ["1. Cover Page Image", "2. Our Story Image"]:
@@ -306,11 +359,12 @@ elif menu == "🔄 Initial Sync":
             # 2. CRAWL & MATCH IMAGES
             # We map "clean_filename" -> "full_path"
             found_images = {}
-            for root, dirs, files in os.walk(IMAGE_DIR):
-                for file in files:
-                    if file.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                        clean_name = clean_key(os.path.splitext(file)[0])
-                        found_images[clean_name] = os.path.join(root, file)
+            if os.path.exists(IMAGE_DIR):
+                for root, dirs, files in os.walk(IMAGE_DIR):
+                    for file in files:
+                        if file.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                            clean_name = clean_key(os.path.splitext(file)[0])
+                            found_images[clean_name] = os.path.join(root, file)
             
             match_count = 0
             for p in all_p:
@@ -321,12 +375,9 @@ elif menu == "🔄 Initial Sync":
                 matched_path = None
                 if clean_item_name in found_images:
                     matched_path = found_images[clean_item_name]
-                else:
-                    # Optional: Add Fuzzy Match here if exact match fails
-                    pass
                 
-                # If matched, copy to root as SKU.jpg
-                if matched_path:
+                # If matched, copy to root as SKU.jpg (Only if folders exist)
+                if matched_path and os.path.exists(IMAGE_DIR):
                     dest_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
                     try:
                         shutil.copy2(matched_path, dest_path)
