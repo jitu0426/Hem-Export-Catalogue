@@ -35,9 +35,9 @@ try:
 
     # --- 2. CLOUDINARY CONFIG ---
     cloudinary.config(
-        cloud_name = "dddtoqebz",
-        api_key = "923925294516228",
-        api_secret = "-vc8Kem3uM4LgH-LXSu998r-5L8",
+        cloud_name = "dnoepbfbr",
+        api_key = "393756212248257",
+        api_secret = "66zA0Je4c0SKqaDcbCglsxPpYGI",
         secure = True
     )
 
@@ -175,38 +175,28 @@ try:
 
     # --- 8. DATA LOADING (UPDATED FOR SYNC) ---
     # --- 8. DATA LOADING (UPDATED FOR 1000+ IMAGES) ---
+    # --- 8. DATA LOADING (UPDATED FOR PDF QUALITY & SPEED) ---
     @st.cache_data(show_spinner="Syncing Data...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # A. Cloudinary Setup (FIXED PAGINATION)
+        # A. Cloudinary Setup
         cloudinary_map = {}
         try:
             cloudinary.api.ping()
             resources = []
             next_cursor = None
-            
-            # Loop to fetch ALL images (handling the 500 limit)
             while True:
-                res = cloudinary.api.resources(
-                    type="upload", 
-                    max_results=500, 
-                    next_cursor=next_cursor
-                )
+                res = cloudinary.api.resources(type="upload", max_results=500, next_cursor=next_cursor)
                 resources.extend(res.get('resources', []))
                 next_cursor = res.get('next_cursor')
-                
-                # If there are no more pages, stop the loop
-                if not next_cursor:
-                    break
+                if not next_cursor: break
             
-            # Map the fetched images
             for res in resources:
                 public_id = res['public_id'].split('/')[-1] 
                 c_key = clean_key(public_id)
                 cloudinary_map[c_key] = res['secure_url']
-                
         except Exception as e:
             st.warning(f"⚠️ Cloudinary Warning: {e}")
             cloudinary_map = {} 
@@ -218,15 +208,11 @@ try:
 
         if os.path.exists(DB_PATH):
             try:
-                with open(DB_PATH, 'r') as f:
-                    db_data = json.load(f)
+                with open(DB_PATH, 'r') as f: db_data = json.load(f)
                 
                 if db_data.get("products"):
                     df = pd.DataFrame(db_data["products"])
-                    # Map Admin keys to App keys
                     df.rename(columns={"SKUCode": "SKU Code"}, inplace=True)
-                    
-                    # Ensure cols exist
                     for col in required_output_cols:
                         if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
                     
@@ -234,40 +220,41 @@ try:
                     df["ImageB64"] = "" 
                     df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
                     
-                    # Image Logic: Local > Cloud
                     for index, row in df.iterrows():
                         sku = str(row.get('SKU Code', '')).strip()
                         local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
                         
                         if os.path.exists(local_img_path):
-                             df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(200, 200))
+                             # Local images: Keep max_size 800 for quality
+                             df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
                         else:
                             row_item_key = clean_key(row['ItemName'])
                             if row_item_key in cloudinary_map:
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(cloudinary_map[row_item_key], max_size=(200, 200))
+                                original_url = cloudinary_map[row_item_key]
+                                
+                                # --- 🚀 THE FIX: SMART RESIZING ---
+                                # Instead of downloading the Huge original or shrinking it in Python,
+                                # We ask Cloudinary for an optimized 800px version.
+                                # This is FAST (small file size) and SHARP (high resolution).
+                                optimized_url = original_url.replace("/upload/", "/upload/w_800,q_auto/")
+                                
+                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
                     
                     return df[required_output_cols]
             except Exception as e:
                 print(f"Admin DB Load Failed: {e}. Falling back to Excel.")
                 data_loaded_from_db = False
 
-        # C. Excel Fallback (Original Logic)
+        # C. Excel Fallback
         if not data_loaded_from_db:
             for catalogue_name, excel_path in CATALOGUE_PATHS.items():
                 if not os.path.exists(excel_path): continue
                 try:
                     df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
                     df = df.fillna("") 
-                    
                     df.columns = [str(c).strip() for c in df.columns]
                     df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
-                    
-                    df['Catalogue'] = catalogue_name
-                    df['Packaging'] = 'Default Packaging'
-                    df["ImageB64"] = "" 
-                    df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
-                    df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
-
+                    df['Catalogue'] = catalogue_name; df['Packaging'] = 'Default Packaging'; df["ImageB64"] = ""; df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]; df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
                     for col in required_output_cols:
                         if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
 
@@ -275,8 +262,7 @@ try:
                         for index, row in df.iterrows():
                             row_item_key = clean_key(row['ItemName'])
                             found_url = None
-                            if row_item_key in cloudinary_map:
-                                found_url = cloudinary_map[row_item_key]
+                            if row_item_key in cloudinary_map: found_url = cloudinary_map[row_item_key]
                             else:
                                 best_score = 0
                                 for cloud_key, url in cloudinary_map.items():
@@ -287,11 +273,12 @@ try:
                                 if best_score < 75: found_url = None
 
                             if found_url:
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(found_url, max_size=(200, 200))
+                                # --- 🚀 THE FIX APPLIED HERE TOO ---
+                                optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
+                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
                     
                     all_data.append(df[required_output_cols])
-                except Exception as e:
-                    st.error(f"Error reading Excel {catalogue_name}: {e}")
+                except Exception as e: st.error(f"Error reading Excel {catalogue_name}: {e}")
 
             if not all_data: return pd.DataFrame(columns=required_output_cols)
             full_df = pd.concat(all_data, ignore_index=True)
@@ -942,4 +929,5 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
