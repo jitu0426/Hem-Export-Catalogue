@@ -366,19 +366,19 @@ try:
     # --- 10. PDF GENERATOR ---
     PRODUCT_CARD_TEMPLATE = """
     <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;">
-        <div style="font-family: sans-serif; font-size: 8pt; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px;">
+        <div style="font-family: sans-serif; font-size: 8pt; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
             {category_name}
         </div>
         <div style="height: 110px; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 5px; background-color: white; padding: 2px; position: relative;">
             {new_badge_html}
             {image_html}
         </div>
-        <div style="text-align: center; padding: 2px 0; height: 40px; overflow: hidden;">
-            <h4 style="margin: 0; font-size: 9pt; color: #000; line-height: 1.2; font-weight: bold; font-family: serif;">
+        <div style="text-align: center; padding: 0; height: 40px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <h4 style="margin: 0; font-size: {font_size}; color: #000; line-height: 1.1; font-weight: bold; font-family: serif; word-wrap: break-word; max-height: 100%;">
                 <span style="color: #007bff; margin-right: 4px;">{ref_no}.</span>{item_name}
             </h4>
         </div>
-    </div>
+        </div>
     """
 
     def generate_story_html(story_img_1_b64):
@@ -638,13 +638,50 @@ try:
             
             new_badge_html = """<div style="position: absolute; top: 0; right: 0; background-color: #dc3545; color: white; font-size: 8px; font-weight: bold; padding: 2px 8px; border-radius: 0 0 0 5px; z-index: 10;">NEW</div>""" if row.get('IsNew') == 1 else ""
 
+            # 4. PRODUCT CARD
+            img_url = row.get("ImageB64", "")
+            if not img_url.startswith("http"):
+                 pass
+            else:
+                 img_b64 = get_image_as_base64_str(img_url)
+                 row["ImageB64"] = img_b64
+
+            img_b64 = row["ImageB64"] 
+            mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
+            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
+            
+            packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
+            sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
+            fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
+            fragrance_output = f"Fragrance: {', '.join(fragrance_list)}" if fragrance_list else "No fragrance info listed"
+            
+            new_badge_html = """<div style="position: absolute; top: 0; right: 0; background-color: #dc3545; color: white; font-size: 8px; font-weight: bold; padding: 2px 8px; border-radius: 0 0 0 5px; z-index: 10;">NEW</div>""" if row.get('IsNew') == 1 else ""
+
+            # 👇👇👇 NEW FONT SIZE LOGIC STARTS HERE 👇👇👇
+            item_name_text = row.get('ItemName', 'N/A')
+            name_len = len(str(item_name_text))
+            
+            if name_len < 35:
+                font_size = "9pt"  # Standard size
+            elif name_len < 55:
+                font_size = "8pt"  # Medium shrink
+            else:
+                font_size = "7pt"  # Max shrink for long names
+            # 👆👆👆 NEW FONT SIZE LOGIC ENDS HERE 👆👆👆
+
             if PRODUCT_CARD_TEMPLATE:
-                card_output = PRODUCT_CARD_TEMPLATE.format(new_badge_html=new_badge_html, image_html=image_html_content, item_name=row.get('ItemName', 'N/A'), category_name=row['Category'], ref_no=index+1, packaging=packaging_text, sku_info=sku_info, fragrance=fragrance_output)
+                card_output = PRODUCT_CARD_TEMPLATE.format(
+                    new_badge_html=new_badge_html,
+                    image_html=image_html_content,
+                    item_name=row.get('ItemName', 'N/A'),
+                    category_name=row['Category'],
+                    ref_no=index+1,
+                    packaging=packaging_text,
+                    sku_info=sku_info,
+                    fragrance=fragrance_output,
+                    font_size=font_size  # 👈 THIS IS THE CRITICAL ADDITION
+                )
                 html_parts.append(card_output)
-        
-        if category_open: html_parts.append('</div>') # Close last category
-        html_parts.append('<div style="clear: both;"></div></div></body></html>')
-        return "".join(html_parts)
 
     def generate_excel_file(df_sorted, customer_name, case_selection_map):
         output = io.BytesIO()
@@ -929,5 +966,6 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
