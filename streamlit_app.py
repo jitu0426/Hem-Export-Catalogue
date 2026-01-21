@@ -176,75 +176,211 @@ try:
     # --- 8. DATA LOADING (UPDATED FOR SYNC) ---
     # --- 8. DATA LOADING (UPDATED FOR 1000+ IMAGES) ---
     # --- 8. DATA LOADING (UPDATED FOR PDF QUALITY & SPEED) ---
-    @st.cache_data(show_spinner="Syncing Data...")
-    def load_data_cached(_dummy_timestamp):
-        all_data = []
-        required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
-        
-        # A. Cloudinary Setup
-        cloudinary_map = {}
-        try:
-            cloudinary.api.ping()
-            resources = []
-            next_cursor = None
-            while True:
-                res = cloudinary.api.resources(type="upload", max_results=500, next_cursor=next_cursor)
-                resources.extend(res.get('resources', []))
-                next_cursor = res.get('next_cursor')
-                if not next_cursor: break
+    def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
+        def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
+            paths_to_check = []
+            if specific_full_path: paths_to_check.append(specific_full_path)
+            paths_to_check.append(os.path.join(BASE_DIR, "assets", fname))
+            paths_to_check.append(os.path.join(BASE_DIR, fname))
+            found_path = None
+            for p in paths_to_check:
+                if os.path.exists(p):
+                    found_path = p
+                    break
+            if found_path: return get_image_as_base64_str(found_path, resize=resize, max_size=max_size)
+            return "" 
+
+        cover_url = "https://res.cloudinary.com/dddtoqebz/image/upload/v1768288172/Cover_Page.jpg"
+        cover_bg_b64 = get_image_as_base64_str(cover_url)
+        if not cover_bg_b64: cover_bg_b64 = load_img_robust("cover page.png", resize=False)
+
+        journey_url = "https://res.cloudinary.com/dddtoqebz/image/upload/v1768288173/image-journey.jpg" 
+        story_img_1_b64 = get_image_as_base64_str(journey_url, max_size=(600,600))
+        if not story_img_1_b64: story_img_1_b64 = load_img_robust("image-journey.png", specific_full_path=STORY_IMG_1_PATH, resize=True, max_size=(600,600))
+
+        watermark_b64 = load_img_robust("watermark.png", resize=False)
+
+        CSS_STYLES = f"""
+            <!DOCTYPE html>
+            <html><head><meta charset="UTF-8">
+            <style>
+            @page {{ size: A4; margin: 0; }}
+            * {{ box-sizing: border-box; }} 
             
-            for res in resources:
-                public_id = res['public_id'].split('/')[-1] 
-                c_key = clean_key(public_id)
-                cloudinary_map[c_key] = res['secure_url']
-        except Exception as e:
-            st.warning(f"⚠️ Cloudinary Warning: {e}")
-            cloudinary_map = {} 
+            html, body {{ 
+                margin: 0 !important; 
+                padding: 0 !important; 
+                width: 100% !important; 
+                background-color: transparent !important; 
+            }}
+            
+            #watermark-layer {{
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                z-index: -1; 
+                background-image: url('data:image/png;base64,{watermark_b64}');
+                background-repeat: repeat; background-position: center center; background-size: cover; 
+                background-color: transparent;
+            }}
+            .cover-page {{ width: 210mm; height: 260mm; display: block; position: relative; margin: 0; padding: 0; overflow: hidden; page-break-after: always; background-color: #ffffff; z-index: 10; }}
+            .story-page, .toc-page {{ width: 210mm; display: block; position: relative; margin: 0; background-color: transparent; page-break-after: always; }}
+            .catalogue-content {{ padding-left: 10mm; padding-right: 10mm; display: block; padding-bottom: 50px; position: relative; z-index: 1; background-color: transparent; }}
+            .catalogue-heading {{ background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; page-break-inside: avoid; clear: both; }} 
+            .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 5mm; clear: both; font-family: serif; page-break-inside: avoid; width: 100%; }} 
+            .subcat-pdf-header {{ color: #007bff; font-size: 11pt; font-weight: bold; margin-top: 10px; margin-bottom: 5px; clear: both; font-family: sans-serif; border-left: 3px solid #007bff; padding-left: 8px; page-break-inside: avoid; width: 100%; }}
+            .case-size-info {{ color: #555; font-size: 10pt; font-style: italic; margin-bottom: 5px; clear: both; font-family: sans-serif; }}
+            .case-size-table {{ width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 9pt; margin-bottom: 10px; clear: both; background-color: rgba(255,255,255,0.9); }}
+            .case-size-table th {{ border: 1px solid #ddd; background-color: #f2f2f2; padding: 4px; text-align: center; font-weight: bold; font-size: 8pt; color: #333; }}
+            .case-size-table td {{ border: 1px solid #ddd; padding: 4px; text-align: center; color: #444; }}
+            .cover-image-container {{ position: absolute; top: 0; left: 0; height: 100%; width: 100%; z-index: 1; }}
+            .cover-image-container img {{ width: 100%; height: 100%; object-fit: cover; }}
+            .clearfix::after {{ content: ""; clear: both; display: table; }}
+            
+            .category-block {{ 
+                display: block; 
+                font-size: 0; 
+                clear: both; 
+                page-break-inside: auto; 
+                margin-bottom: 20px; 
+                width: 100%;
+                page-break-before: always; 
+            }}
+            
+            h1.catalogue-heading + .category-block {{
+                page-break-before: avoid !important;
+            }}
 
-        # >>> B. CHECK ADMIN DATABASE FIRST <<<
-        DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
-        IMAGE_DIR = os.path.join(BASE_DIR, "images")
-        data_loaded_from_db = False
+            .product-card {{ 
+                display: inline-block; 
+                width: 23%; 
+                margin: 10px 1%; 
+                vertical-align: top;
+                font-size: 12pt;
+                padding: 5px; box-sizing: border-box; background-color: #fcfcfc; border: 1px solid #E5C384; 
+                border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;
+                page-break-inside: avoid; 
+            }}
+            </style></head><body style='margin: 0; padding: 0;'>
+            <div id="watermark-layer"></div>
+        """
+        
+        html_parts = []
+        html_parts.append(CSS_STYLES)
+        html_parts.append(f"""<div class="cover-page"><div class="cover-image-container"><img src="data:image/png;base64,{cover_bg_b64}"></div></div>""")
+        html_parts.append(generate_story_html(story_img_1_b64))
+        html_parts.append(generate_table_of_contents_html(df_sorted))
+        html_parts.append('<div class="catalogue-content clearfix">')
 
-        if os.path.exists(DB_PATH):
-            try:
-                with open(DB_PATH, 'r') as f: db_data = json.load(f)
+        def get_val_fuzzy(row_data, keys_list):
+            for k in keys_list:
+                for data_k in row_data.keys():
+                    if k.lower() in data_k.lower(): return str(row_data[data_k])
+            return "-"
+
+        current_catalogue = None; current_category = None; current_subcategory = None
+        is_first_item = True; category_open = False
+
+        for index, row in df_sorted.iterrows():
+            # 1. CATALOGUE HEADER
+            if row['Catalogue'] != current_catalogue:
+                if category_open: html_parts.append('</div>'); category_open = False 
+                current_catalogue = row['Catalogue']
+                current_category = None; current_subcategory = None
+                break_style = 'style="page-break-before: always;"' if not is_first_item else ""
+                html_parts.append(f'<div style="clear:both;"></div><h1 class="catalogue-heading" {break_style}>{current_catalogue}</h1>')
+                is_first_item = False
+
+            # 2. CATEGORY HEADER
+            if row['Category'] != current_category:
+                if category_open: html_parts.append('</div>') 
                 
-                if db_data.get("products"):
-                    df = pd.DataFrame(db_data["products"])
-                    df.rename(columns={"SKUCode": "SKU Code"}, inplace=True)
-                    for col in required_output_cols:
-                        if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
-                    
-                    df['Packaging'] = 'Default Packaging'
-                    df["ImageB64"] = "" 
-                    df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
-                    
-                    for index, row in df.iterrows():
-                        sku = str(row.get('SKU Code', '')).strip()
-                        local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
-                        
-                        if os.path.exists(local_img_path):
-                             # Local images: Keep max_size 800 for quality
-                             df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
-                        else:
-                            row_item_key = clean_key(row['ItemName'])
-                            if row_item_key in cloudinary_map:
-                                original_url = cloudinary_map[row_item_key]
-                                
-                                # --- 🚀 THE FIX: SMART RESIZING ---
-                                # Instead of downloading the Huge original or shrinking it in Python,
-                                # We ask Cloudinary for an optimized 800px version.
-                                # This is FAST (small file size) and SHARP (high resolution).
-                                optimized_url = original_url.replace("/upload/", "/upload/w_800,q_auto/")
-                                
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
-                    
-                    return df[required_output_cols]
-            except Exception as e:
-                print(f"Admin DB Load Failed: {e}. Falling back to Excel.")
-                data_loaded_from_db = False
+                current_category = row['Category']
+                current_subcategory = None
+                safe_category_id = create_safe_id(current_category)
+                
+                if current_category in case_selection_map:
+                    try:
+                        row_data = case_selection_map[current_category]
+                    except:
+                        row_data = {}
+                else:
+                    row_data = {}
 
+                html_parts.append('<div class="category-block clearfix">') 
+                category_open = True
+                
+                html_parts.append(f'<h2 class="category-heading" id="category-{safe_category_id}"><a href="#main-index" style="float: right; font-size: 10px; color: #555; text-decoration: none; font-weight: normal; font-family: sans-serif; margin-top: 4px;">BACK TO INDEX &uarr;</a>{current_category}</h2>')
+                
+                if row_data:
+                    desc = row_data.get('Description', '')
+                    if desc: html_parts.append(f'<div class="case-size-info"><strong>Case Size:</strong> {desc}</div>')
+                    
+                    packing_val = get_val_fuzzy(row_data, ["Packing", "Master Ctn"])
+                    gross_wt = get_val_fuzzy(row_data, ["Gross Wt", "Gross Weight"])
+                    net_wt = get_val_fuzzy(row_data, ["Net Wt", "Net Weight"])
+                    length = get_val_fuzzy(row_data, ["Length"])
+                    breadth = get_val_fuzzy(row_data, ["Breadth", "Width"])
+                    height = get_val_fuzzy(row_data, ["Height"])
+                    cbm_val = get_val_fuzzy(row_data, ["CBM"])
+                    
+                    html_parts.append(f'''<table class="case-size-table"><tr><th>Packing per Master Ctn<br>(doz/box)</th><th>Gross Wt.<br>(Kg)</th><th>Net Wt.<br>(Kg)</th><th>Length<br>(Cm)</th><th>Breadth<br>(Cm)</th><th>Height<br>(Cm)</th><th>CBM</th></tr><tr><td>{packing_val}</td><td>{gross_wt}</td><td>{net_wt}</td><td>{length}</td><td>{breadth}</td><td>{height}</td><td>{cbm_val}</td></tr></table>''')
+
+            # 3. SUBCATEGORY HEADER
+            sub_val = str(row.get('Subcategory', '')).strip()
+            if sub_val.upper() != 'N/A' and sub_val.lower() != 'nan' and sub_val != '':
+                if sub_val != current_subcategory:
+                    current_subcategory = sub_val
+                    html_parts.append(f'<div class="subcat-pdf-header">{current_subcategory}</div>')
+
+            # 4. PRODUCT CARD
+            img_url = row.get("ImageB64", "")
+            if not img_url.startswith("http"):
+                 pass
+            else:
+                 img_b64 = get_image_as_base64_str(img_url)
+                 row["ImageB64"] = img_b64
+
+            img_b64 = row["ImageB64"] 
+            mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
+            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
+            
+            packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
+            sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
+            fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
+            fragrance_output = f"Fragrance: {', '.join(fragrance_list)}" if fragrance_list else "No fragrance info listed"
+            
+            new_badge_html = """<div style="position: absolute; top: 0; right: 0; background-color: #dc3545; color: white; font-size: 8px; font-weight: bold; padding: 2px 8px; border-radius: 0 0 0 5px; z-index: 10;">NEW</div>""" if row.get('IsNew') == 1 else ""
+
+            # --- SMART FONT SCALE LOGIC ---
+            item_name_text = row.get('ItemName', 'N/A')
+            name_len = len(str(item_name_text))
+            
+            if name_len < 35:
+                font_size = "9pt"
+            elif name_len < 55:
+                font_size = "8pt"
+            else:
+                font_size = "7pt"
+            # ------------------------------
+
+            if PRODUCT_CARD_TEMPLATE:
+                card_output = PRODUCT_CARD_TEMPLATE.format(
+                    new_badge_html=new_badge_html,
+                    image_html=image_html_content,
+                    item_name=row.get('ItemName', 'N/A'),
+                    category_name=row['Category'],
+                    ref_no=index+1,
+                    packaging=packaging_text,
+                    sku_info=sku_info,
+                    fragrance=fragrance_output,
+                    font_size=font_size
+                )
+                html_parts.append(card_output)
+        
+        if category_open: html_parts.append('</div>') # Close last category
+        html_parts.append('<div style="clear: both;"></div></div></body></html>')
+        
+        # 👇 THIS IS THE MISSING LINE THAT CAUSED THE ERROR 👇
+        return "".join(html_parts)
         # C. Excel Fallback
         if not data_loaded_from_db:
             for catalogue_name, excel_path in CATALOGUE_PATHS.items():
