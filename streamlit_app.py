@@ -50,7 +50,6 @@ try:
                 headers = {"User-Agent": "Mozilla/5.0"}
                 response = requests.get(url_or_path, headers=headers, timeout=5)
                 if response.status_code != 200:
-                    print(f"Failed to fetch image: {response.status_code}")
                     return ""
                 img = Image.open(io.BytesIO(response.content))
             else:
@@ -173,6 +172,7 @@ try:
         except Exception as e:
             st.error(f"Failed to save template: {e}")
 
+    # --- 8. DATA LOADING (FIXED & CONSOLIDATED) ---
     @st.cache_data(show_spinner="Syncing Data...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
@@ -222,7 +222,6 @@ try:
                         local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
                         
                         if os.path.exists(local_img_path):
-                             # Local images: Keep max_size 800 for quality
                              df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
                         else:
                             row_item_key = clean_key(row['ItemName'])
@@ -273,8 +272,108 @@ try:
             if not all_data: return pd.DataFrame(columns=required_output_cols)
             full_df = pd.concat(all_data, ignore_index=True)
             return full_df
-    # --- 8. DATA LOADING (UPDATED FOR 1000+ IMAGES) ---
-    # --- 8. DATA LOADING (UPDATED FOR PDF QUALITY & SPEED) ---
+
+    # --- 10. PDF GENERATOR ---
+    PRODUCT_CARD_TEMPLATE = """
+    <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;">
+        <div style="font-family: sans-serif; font-size: 8pt; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            {category_name}
+        </div>
+        <div style="height: 110px; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 5px; background-color: white; padding: 2px; position: relative;">
+            {new_badge_html}
+            {image_html}
+        </div>
+        <div style="text-align: center; padding: 0; height: 40px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <h4 style="margin: 0; font-size: {font_size}; color: #000; line-height: 1.1; font-weight: bold; font-family: serif; word-wrap: break-word; max-height: 100%;">
+                <span style="color: #007bff; margin-right: 4px;">{ref_no}.</span>{item_name}
+            </h4>
+        </div>
+    </div>
+    """
+
+    def generate_story_html(story_img_1_b64):
+        text_block_1 = """HEM Corporation is amongst top global leaders in the manufacturing and export of perfumed agarbattis. For over three decades now we have been parceling out high-quality masala sticks, agarbattis, dhoops, and cones to our customers in more than 70 countries. We are known and established for our superior quality products.<br><br>HEM has been showered with love and accolades all across the globe for its diverse range of products. This makes us the most preferred brand the world over. HEM has been awarded as the ‘Top Exporters’ brand, for incense sticks by the ‘Export Promotion Council for Handicraft’ (EPCH) for three consecutive years from 2008 till 2011.<br><br>We have also been awarded “Niryat Shree” (Export) Silver Trophy in the Handicraft category by ‘Federation of Indian Export Organization’ (FIEO). The award was presented to us by the then Honourable President of India, late Shri Pranab Mukherjee."""
+        text_journey_1 = """From a brand that was founded by three brothers in 1983, HEM Fragrances has come a long way. HEM started as a simple incense store offering products like masala agarbatti, thuribles, incense burner and dhoops. However, with time, there was a huge evolution in the world of fragrances much that the customers' needs also started changing. HEM incense can be experienced not only to provide you with rich aromatic experience but also create a perfect ambience for your daily prayers, meditation, and yoga.<br><br>The concept of aromatherapy massage, burning incense sticks and incense herbs for spiritual practices, using aromatherapy diffuser oils to promote healing and relaxation or using palo santo incense to purify and cleanse a space became popular around the world.<br><br>So, while we remained focused on creating our signature line of products, especially the ‘HEM Precious’ range which is a premium flagship collection, there was a dire need to expand our portfolio to meet increasing customer demands."""
+        
+        img_tag = ""
+        if story_img_1_b64:
+            img_tag = f'<img src="data:image/jpeg;base64,{story_img_1_b64}" style="max-width: 100%; height: auto; border: 1px solid #eee;" alt="Awards Image">'
+        else:
+            img_tag = '<div style="border: 2px dashed red; padding: 20px; color: red;">JOURNEY IMAGE NOT FOUND</div>'
+
+        html = f"""
+        <div class="story-page" style="page-break-after: always; padding: 25px 50px; font-family: sans-serif; overflow: hidden; height: 260mm;">
+            <h1 style="text-align: center; color: #333; font-size: 28pt; margin-bottom: 20px;">Our Journey</h1>
+            <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: justify;">{text_block_1}</div>
+            <div style="margin-bottom: 30px; overflow: auto; clear: both;">
+                <div style="float: left; width: 50%; margin-right: 20px; font-size: 11pt; line-height: 1.6; text-align: justify;">{text_journey_1}</div>
+                <div style="float: right; width: 45%; text-align: center;">
+                    {img_tag}
+                </div>
+            </div>
+            <h2 style="text-align: center; font-size: 14pt; margin-top: 40px; clear: both;">Innovation, Creativity, Sustainability</h2>
+        </div>
+        """
+        return html
+
+    def generate_table_of_contents_html(df_sorted):
+        categories_data = []
+        seen_categories = set()
+        unique_categories = []
+        
+        for cat in df_sorted['Category'].unique():
+            if cat not in seen_categories:
+                unique_categories.append(cat)
+                seen_categories.add(cat)
+
+        for category in unique_categories:
+            group = df_sorted[df_sorted['Category'] == category]
+            rep_image = "" 
+            for _, row in group.iterrows():
+                img_str = row.get('ImageB64', '')
+                if img_str and len(str(img_str)) > 100: 
+                    rep_image = img_str
+                    break 
+            
+            categories_data.append({
+                "name": category,
+                "image": rep_image,
+                "safe_id": create_safe_id(category)
+            })
+
+        toc_html = """
+        <style>
+            .toc-title { text-align: center; font-family: serif; font-size: 32pt; color: #222; margin-bottom: 30px; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; }
+            
+            .index-grid-container { 
+                display: block; width: 100%; margin: 0 auto; font-size: 0;
+            }
+            
+            a.index-card-link { 
+                display: inline-block; 
+                width: 30%; 
+                margin: 1.5%; height: 200px; 
+                background-color: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); 
+                text-decoration: none; overflow: hidden; border: 1px solid #e0e0e0; 
+                page-break-inside: avoid; position: relative; z-index: 100; 
+                vertical-align: top;
+            }
+            .index-card-image { width: 100%; height: 160px; background-repeat: no-repeat; background-position: center center; background-size: cover; background-color: #f9f9f9; }
+            .index-card-label { height: 40px; background-color: #b30000; color: white; font-family: sans-serif; font-size: 10pt; font-weight: bold; display: block; line-height: 40px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; }
+            .clearfix::after { content: ""; clear: both; display: table; }
+        </style>
+        <div id="main-index" class="toc-page" style="page-break-after: always; padding: 20px;">
+            <h1 class="toc-title">Our Products</h1>
+            <div class="index-grid-container clearfix">
+        """
+        for cat in categories_data:
+            bg_style = f"background-image: url('data:image/png;base64,{cat['image']}');" if cat['image'] else "background-color: #eee;" 
+            card_html = f"""<a href="#category-{cat['safe_id']}" class="index-card-link"><div class="index-card-image" style="{bg_style}"></div><div class="index-card-label">{cat['name']}</div></a>"""
+            toc_html += card_html
+
+        toc_html += """</div><div style="clear: both;"></div></div>"""
+        return toc_html
+
     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
             paths_to_check = []
@@ -478,48 +577,64 @@ try:
         if category_open: html_parts.append('</div>') # Close last category
         html_parts.append('<div style="clear: both;"></div></div></body></html>')
         
-        # 👇 THIS IS THE MISSING LINE THAT CAUSED THE ERROR 👇
         return "".join(html_parts)
-        # C. Excel Fallback
-        if not data_loaded_from_db:
-            for catalogue_name, excel_path in CATALOGUE_PATHS.items():
-                if not os.path.exists(excel_path): continue
-                try:
-                    df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
-                    df = df.fillna("") 
-                    df.columns = [str(c).strip() for c in df.columns]
-                    df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
-                    df['Catalogue'] = catalogue_name; df['Packaging'] = 'Default Packaging'; df["ImageB64"] = ""; df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]; df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
-                    for col in required_output_cols:
-                        if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
 
-                    if cloudinary_map:
-                        for index, row in df.iterrows():
-                            row_item_key = clean_key(row['ItemName'])
-                            found_url = None
-                            if row_item_key in cloudinary_map: found_url = cloudinary_map[row_item_key]
-                            else:
-                                best_score = 0
-                                for cloud_key, url in cloudinary_map.items():
-                                    score = fuzz.token_sort_ratio(row_item_key, cloud_key)
-                                    if score > best_score:
-                                        best_score = score
-                                        found_url = url
-                                if best_score < 75: found_url = None
+    def generate_excel_file(df_sorted, customer_name, case_selection_map):
+        output = io.BytesIO()
+        excel_rows = []
+        
+        for idx, row in df_sorted.iterrows():
+            cat = row['Category']
+            suffix = ""; cbm = 0.0
+            if cat in case_selection_map:
+                case_data = case_selection_map[cat]
+                for k in case_data.keys():
+                    if "suffix" in k.lower(): suffix = str(case_data[k]).strip()
+                    if "cbm" in k.lower(): 
+                        try: cbm = round(float(case_data[k]), 3)
+                        except: cbm = 0.0
+                if suffix == 'nan': suffix = ""
+            full_name = str(row['ItemName']).strip()
+            if suffix: full_name = f"{full_name} {suffix}"
+                
+            excel_rows.append({ "Ref No": idx + 1, "Category": cat, "Product Name + Carton Name": full_name, "Carton per CBM": cbm, "Order Quantity (Cartons)": 0, "Total CBM": 0 })
+            
+        df_excel = pd.DataFrame(excel_rows)
 
-                            if found_url:
-                                # --- 🚀 THE FIX APPLIED HERE TOO ---
-                                optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
-                    
-                    all_data.append(df[required_output_cols])
-                except Exception as e: st.error(f"Error reading Excel {catalogue_name}: {e}")
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df_excel.to_excel(writer, index=False, sheet_name='Order Sheet', startrow=7) 
+            workbook = writer.book; worksheet = writer.sheets['Order Sheet']
+            header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
+            input_fmt = workbook.add_format({'bg_color': '#FFFCB7', 'border': 1, 'locked': False})
+            locked_fmt = workbook.add_format({'border': 1, 'locked': True, 'num_format': '0.000'})
+            count_fmt = workbook.add_format({'num_format': '0.00', 'bold': True, 'border': 1})
+            title_fmt = workbook.add_format({'bold': True, 'font_size': 14})
+            
+            worksheet.protect()
+            worksheet.freeze_panes(8, 0)
+            worksheet.write('B1', f"Order Sheet for: {customer_name}", title_fmt)
+            worksheet.write('B2', 'Total CBM:')
+            worksheet.write_formula('C2', f'=SUM(F9:F{len(df_excel)+9})', workbook.add_format({'num_format': '0.000'}))
+            worksheet.write('B3', 'CONTAINER TYPE', workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1}))
+            worksheet.write('C3', 'ESTIMATED CONTAINERS', workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1}))
+            worksheet.write('B4', '20 FT (30 CBM)', workbook.add_format({'border': 1}))
+            worksheet.write('B5', '40 FT (60 CBM)', workbook.add_format({'border': 1}))
+            worksheet.write('B6', '40 FT HC (70 CBM)', workbook.add_format({'border': 1}))
+            worksheet.write_formula('C4', '=$C$2/30', count_fmt)
+            worksheet.write_formula('C5', '=$C$2/60', count_fmt)
+            worksheet.write_formula('C6', '=$C$2/70', count_fmt)
 
-            if not all_data: return pd.DataFrame(columns=required_output_cols)
-            full_df = pd.concat(all_data, ignore_index=True)
-            return full_df
+            for col_num, value in enumerate(df_excel.columns): worksheet.write(7, col_num, value, header_fmt)
+            worksheet.set_column('A:A', 8); worksheet.set_column('B:B', 25); worksheet.set_column('C:C', 50); worksheet.set_column('D:F', 15) 
+            
+            for i in range(len(df_excel)):
+                row_idx = i + 9 
+                worksheet.write(row_idx-1, 4, 0, input_fmt) 
+                worksheet.write_formula(row_idx-1, 5, f'=D{row_idx}*E{row_idx}', locked_fmt)
 
-    # --- 9. CART UTILS ---
+        return output.getvalue()
+
+    # --- 11. CART UTILS ---
     def add_to_cart(selected_df):
         current_pids = {item["ProductID"] for item in st.session_state.cart}
         new_items = []
@@ -598,382 +713,7 @@ try:
                         if col_check.checkbox("Select", value=initial_checked, key=unique_key, label_visibility="hidden"):
                             pass
 
-    # --- 10. PDF GENERATOR ---
-    PRODUCT_CARD_TEMPLATE = """
-    <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;">
-        <div style="font-family: sans-serif; font-size: 8pt; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            {category_name}
-        </div>
-        <div style="height: 110px; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 5px; background-color: white; padding: 2px; position: relative;">
-            {new_badge_html}
-            {image_html}
-        </div>
-        <div style="text-align: center; padding: 0; height: 40px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-            <h4 style="margin: 0; font-size: {font_size}; color: #000; line-height: 1.1; font-weight: bold; font-family: serif; word-wrap: break-word; max-height: 100%;">
-                <span style="color: #007bff; margin-right: 4px;">{ref_no}.</span>{item_name}
-            </h4>
-        </div>
-        </div>
-    """
-
-    def generate_story_html(story_img_1_b64):
-        text_block_1 = """HEM Corporation is amongst top global leaders in the manufacturing and export of perfumed agarbattis. For over three decades now we have been parceling out high-quality masala sticks, agarbattis, dhoops, and cones to our customers in more than 70 countries. We are known and established for our superior quality products.<br><br>HEM has been showered with love and accolades all across the globe for its diverse range of products. This makes us the most preferred brand the world over. HEM has been awarded as the ‘Top Exporters’ brand, for incense sticks by the ‘Export Promotion Council for Handicraft’ (EPCH) for three consecutive years from 2008 till 2011.<br><br>We have also been awarded “Niryat Shree” (Export) Silver Trophy in the Handicraft category by ‘Federation of Indian Export Organization’ (FIEO). The award was presented to us by the then Honourable President of India, late Shri Pranab Mukherjee."""
-        text_journey_1 = """From a brand that was founded by three brothers in 1983, HEM Fragrances has come a long way. HEM started as a simple incense store offering products like masala agarbatti, thuribles, incense burner and dhoops. However, with time, there was a huge evolution in the world of fragrances much that the customers' needs also started changing. HEM incense can be experienced not only to provide you with rich aromatic experience but also create a perfect ambience for your daily prayers, meditation, and yoga.<br><br>The concept of aromatherapy massage, burning incense sticks and incense herbs for spiritual practices, using aromatherapy diffuser oils to promote healing and relaxation or using palo santo incense to purify and cleanse a space became popular around the world.<br><br>So, while we remained focused on creating our signature line of products, especially the ‘HEM Precious’ range which is a premium flagship collection, there was a dire need to expand our portfolio to meet increasing customer demands."""
-        
-        img_tag = ""
-        if story_img_1_b64:
-            img_tag = f'<img src="data:image/jpeg;base64,{story_img_1_b64}" style="max-width: 100%; height: auto; border: 1px solid #eee;" alt="Awards Image">'
-        else:
-            img_tag = '<div style="border: 2px dashed red; padding: 20px; color: red;">JOURNEY IMAGE NOT FOUND</div>'
-
-        html = f"""
-        <div class="story-page" style="page-break-after: always; padding: 25px 50px; font-family: sans-serif; overflow: hidden; height: 260mm;">
-            <h1 style="text-align: center; color: #333; font-size: 28pt; margin-bottom: 20px;">Our Journey</h1>
-            <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: justify;">{text_block_1}</div>
-            <div style="margin-bottom: 30px; overflow: auto; clear: both;">
-                <div style="float: left; width: 50%; margin-right: 20px; font-size: 11pt; line-height: 1.6; text-align: justify;">{text_journey_1}</div>
-                <div style="float: right; width: 45%; text-align: center;">
-                    {img_tag}
-                </div>
-            </div>
-            <h2 style="text-align: center; font-size: 14pt; margin-top: 40px; clear: both;">Innovation, Creativity, Sustainability</h2>
-        </div>
-        """
-        return html
-
-    def generate_table_of_contents_html(df_sorted):
-        categories_data = []
-        seen_categories = set()
-        unique_categories = []
-        
-        for cat in df_sorted['Category'].unique():
-            if cat not in seen_categories:
-                unique_categories.append(cat)
-                seen_categories.add(cat)
-
-        for category in unique_categories:
-            group = df_sorted[df_sorted['Category'] == category]
-            rep_image = "" 
-            for _, row in group.iterrows():
-                img_str = row.get('ImageB64', '')
-                if img_str and len(str(img_str)) > 100: 
-                    rep_image = img_str
-                    break 
-            
-            categories_data.append({
-                "name": category,
-                "image": rep_image,
-                "safe_id": create_safe_id(category)
-            })
-
-        toc_html = """
-        <style>
-            .toc-title { text-align: center; font-family: serif; font-size: 32pt; color: #222; margin-bottom: 30px; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; }
-            
-            .index-grid-container { 
-                display: block; width: 100%; margin: 0 auto; font-size: 0;
-            }
-            
-            a.index-card-link { 
-                display: inline-block; 
-                width: 30%; 
-                margin: 1.5%; height: 200px; 
-                background-color: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); 
-                text-decoration: none; overflow: hidden; border: 1px solid #e0e0e0; 
-                page-break-inside: avoid; position: relative; z-index: 100; 
-                vertical-align: top;
-            }
-            .index-card-image { width: 100%; height: 160px; background-repeat: no-repeat; background-position: center center; background-size: cover; background-color: #f9f9f9; }
-            .index-card-label { height: 40px; background-color: #b30000; color: white; font-family: sans-serif; font-size: 10pt; font-weight: bold; display: block; line-height: 40px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; }
-            .clearfix::after { content: ""; clear: both; display: table; }
-        </style>
-        <div id="main-index" class="toc-page" style="page-break-after: always; padding: 20px;">
-            <h1 class="toc-title">Our Products</h1>
-            <div class="index-grid-container clearfix">
-        """
-        for cat in categories_data:
-            bg_style = f"background-image: url('data:image/png;base64,{cat['image']}');" if cat['image'] else "background-color: #eee;" 
-            card_html = f"""<a href="#category-{cat['safe_id']}" class="index-card-link"><div class="index-card-image" style="{bg_style}"></div><div class="index-card-label">{cat['name']}</div></a>"""
-            toc_html += card_html
-
-        toc_html += """</div><div style="clear: both;"></div></div>"""
-        return toc_html
-
-    def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
-        def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
-            paths_to_check = []
-            if specific_full_path: paths_to_check.append(specific_full_path)
-            paths_to_check.append(os.path.join(BASE_DIR, "assets", fname))
-            paths_to_check.append(os.path.join(BASE_DIR, fname))
-            found_path = None
-            for p in paths_to_check:
-                if os.path.exists(p):
-                    found_path = p
-                    break
-                if found_path: return get_image_as_base64_str(found_path, resize=resize, max_size=max_size)
-            return "" 
-
-        cover_url = "https://res.cloudinary.com/dddtoqebz/image/upload/v1768288172/Cover_Page.jpg"
-        cover_bg_b64 = get_image_as_base64_str(cover_url)
-        if not cover_bg_b64: cover_bg_b64 = load_img_robust("cover page.png", resize=False)
-
-        journey_url = "https://res.cloudinary.com/dddtoqebz/image/upload/v1768288173/image-journey.jpg" 
-        story_img_1_b64 = get_image_as_base64_str(journey_url, max_size=(600,600))
-        if not story_img_1_b64: story_img_1_b64 = load_img_robust("image-journey.png", specific_full_path=STORY_IMG_1_PATH, resize=True, max_size=(600,600))
-
-        watermark_b64 = load_img_robust("watermark.png", resize=False)
-
-        CSS_STYLES = f"""
-            <!DOCTYPE html>
-            <html><head><meta charset="UTF-8">
-            <style>
-            @page {{ size: A4; margin: 0; }}
-            * {{ box-sizing: border-box; }} 
-            
-            html, body {{ 
-                margin: 0 !important; 
-                padding: 0 !important; 
-                width: 100% !important; 
-                background-color: transparent !important; 
-            }}
-            
-            #watermark-layer {{
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                z-index: -1; 
-                background-image: url('data:image/png;base64,{watermark_b64}');
-                background-repeat: repeat; background-position: center center; background-size: cover; 
-                background-color: transparent;
-            }}
-            .cover-page {{ width: 210mm; height: 260mm; display: block; position: relative; margin: 0; padding: 0; overflow: hidden; page-break-after: always; background-color: #ffffff; z-index: 10; }}
-            .story-page, .toc-page {{ width: 210mm; display: block; position: relative; margin: 0; background-color: transparent; page-break-after: always; }}
-            .catalogue-content {{ padding-left: 10mm; padding-right: 10mm; display: block; padding-bottom: 50px; position: relative; z-index: 1; background-color: transparent; }}
-            .catalogue-heading {{ background-color: #333; color: white; font-size: 18pt; padding: 8px 15px; margin-bottom: 5px; font-weight: bold; font-family: sans-serif; text-align: center; page-break-inside: avoid; clear: both; }} 
-            .category-heading {{ color: #333; font-size: 14pt; padding: 8px 0 4px 0; border-bottom: 2px solid #E5C384; margin-top: 5mm; clear: both; font-family: serif; page-break-inside: avoid; width: 100%; }} 
-            .subcat-pdf-header {{ color: #007bff; font-size: 11pt; font-weight: bold; margin-top: 10px; margin-bottom: 5px; clear: both; font-family: sans-serif; border-left: 3px solid #007bff; padding-left: 8px; page-break-inside: avoid; width: 100%; }}
-            .case-size-info {{ color: #555; font-size: 10pt; font-style: italic; margin-bottom: 5px; clear: both; font-family: sans-serif; }}
-            .case-size-table {{ width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 9pt; margin-bottom: 10px; clear: both; background-color: rgba(255,255,255,0.9); }}
-            .case-size-table th {{ border: 1px solid #ddd; background-color: #f2f2f2; padding: 4px; text-align: center; font-weight: bold; font-size: 8pt; color: #333; }}
-            .case-size-table td {{ border: 1px solid #ddd; padding: 4px; text-align: center; color: #444; }}
-            .cover-image-container {{ position: absolute; top: 0; left: 0; height: 100%; width: 100%; z-index: 1; }}
-            .cover-image-container img {{ width: 100%; height: 100%; object-fit: cover; }}
-            .clearfix::after {{ content: ""; clear: both; display: table; }}
-            
-            .category-block {{ 
-                display: block; 
-                font-size: 0; 
-                clear: both; 
-                page-break-inside: auto; 
-                margin-bottom: 20px; 
-                width: 100%;
-                page-break-before: always; 
-            }}
-            
-            h1.catalogue-heading + .category-block {{
-                page-break-before: avoid !important;
-            }}
-
-            .product-card {{ 
-                display: inline-block; 
-                width: 23%; 
-                margin: 10px 1%; 
-                vertical-align: top;
-                font-size: 12pt;
-                padding: 5px; box-sizing: border-box; background-color: #fcfcfc; border: 1px solid #E5C384; 
-                border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;
-                page-break-inside: avoid; 
-            }}
-            </style></head><body style='margin: 0; padding: 0;'>
-            <div id="watermark-layer"></div>
-        """
-        
-        html_parts = []
-        html_parts.append(CSS_STYLES)
-        html_parts.append(f"""<div class="cover-page"><div class="cover-image-container"><img src="data:image/png;base64,{cover_bg_b64}"></div></div>""")
-        html_parts.append(generate_story_html(story_img_1_b64))
-        html_parts.append(generate_table_of_contents_html(df_sorted))
-        html_parts.append('<div class="catalogue-content clearfix">')
-
-        def get_val_fuzzy(row_data, keys_list):
-            for k in keys_list:
-                for data_k in row_data.keys():
-                    if k.lower() in data_k.lower(): return str(row_data[data_k])
-            return "-"
-
-        current_catalogue = None; current_category = None; current_subcategory = None
-        is_first_item = True; category_open = False
-
-        for index, row in df_sorted.iterrows():
-            # 1. CATALOGUE HEADER
-            if row['Catalogue'] != current_catalogue:
-                if category_open: html_parts.append('</div>'); category_open = False 
-                current_catalogue = row['Catalogue']
-                current_category = None; current_subcategory = None
-                break_style = 'style="page-break-before: always;"' if not is_first_item else ""
-                html_parts.append(f'<div style="clear:both;"></div><h1 class="catalogue-heading" {break_style}>{current_catalogue}</h1>')
-                is_first_item = False
-
-            # 2. CATEGORY HEADER
-            if row['Category'] != current_category:
-                if category_open: html_parts.append('</div>') 
-                
-                current_category = row['Category']
-                current_subcategory = None
-                safe_category_id = create_safe_id(current_category)
-                
-                if current_category in case_selection_map:
-                    try:
-                        row_data = case_selection_map[current_category]
-                    except:
-                        row_data = {}
-                else:
-                    row_data = {}
-
-                html_parts.append('<div class="category-block clearfix">') 
-                category_open = True
-                
-                html_parts.append(f'<h2 class="category-heading" id="category-{safe_category_id}"><a href="#main-index" style="float: right; font-size: 10px; color: #555; text-decoration: none; font-weight: normal; font-family: sans-serif; margin-top: 4px;">BACK TO INDEX &uarr;</a>{current_category}</h2>')
-                
-                if row_data:
-                    desc = row_data.get('Description', '')
-                    if desc: html_parts.append(f'<div class="case-size-info"><strong>Case Size:</strong> {desc}</div>')
-                    
-                    packing_val = get_val_fuzzy(row_data, ["Packing", "Master Ctn"])
-                    gross_wt = get_val_fuzzy(row_data, ["Gross Wt", "Gross Weight"])
-                    net_wt = get_val_fuzzy(row_data, ["Net Wt", "Net Weight"])
-                    length = get_val_fuzzy(row_data, ["Length"])
-                    breadth = get_val_fuzzy(row_data, ["Breadth", "Width"])
-                    height = get_val_fuzzy(row_data, ["Height"])
-                    cbm_val = get_val_fuzzy(row_data, ["CBM"])
-                    
-                    html_parts.append(f'''<table class="case-size-table"><tr><th>Packing per Master Ctn<br>(doz/box)</th><th>Gross Wt.<br>(Kg)</th><th>Net Wt.<br>(Kg)</th><th>Length<br>(Cm)</th><th>Breadth<br>(Cm)</th><th>Height<br>(Cm)</th><th>CBM</th></tr><tr><td>{packing_val}</td><td>{gross_wt}</td><td>{net_wt}</td><td>{length}</td><td>{breadth}</td><td>{height}</td><td>{cbm_val}</td></tr></table>''')
-
-            # 3. SUBCATEGORY HEADER
-            sub_val = str(row.get('Subcategory', '')).strip()
-            if sub_val.upper() != 'N/A' and sub_val.lower() != 'nan' and sub_val != '':
-                if sub_val != current_subcategory:
-                    current_subcategory = sub_val
-                    html_parts.append(f'<div class="subcat-pdf-header">{current_subcategory}</div>')
-
-            # 4. PRODUCT CARD
-            img_url = row.get("ImageB64", "")
-            if not img_url.startswith("http"):
-                 pass
-            else:
-                 img_b64 = get_image_as_base64_str(img_url)
-                 row["ImageB64"] = img_b64
-
-            img_b64 = row["ImageB64"] 
-            mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
-            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
-            
-            packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
-            sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
-            fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
-            fragrance_output = f"Fragrance: {', '.join(fragrance_list)}" if fragrance_list else "No fragrance info listed"
-            
-            new_badge_html = """<div style="position: absolute; top: 0; right: 0; background-color: #dc3545; color: white; font-size: 8px; font-weight: bold; padding: 2px 8px; border-radius: 0 0 0 5px; z-index: 10;">NEW</div>""" if row.get('IsNew') == 1 else ""
-
-            # 4. PRODUCT CARD
-            img_url = row.get("ImageB64", "")
-            if not img_url.startswith("http"):
-                 pass
-            else:
-                 img_b64 = get_image_as_base64_str(img_url)
-                 row["ImageB64"] = img_b64
-
-            img_b64 = row["ImageB64"] 
-            mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
-            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
-            
-            packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
-            sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
-            fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
-            fragrance_output = f"Fragrance: {', '.join(fragrance_list)}" if fragrance_list else "No fragrance info listed"
-            
-            new_badge_html = """<div style="position: absolute; top: 0; right: 0; background-color: #dc3545; color: white; font-size: 8px; font-weight: bold; padding: 2px 8px; border-radius: 0 0 0 5px; z-index: 10;">NEW</div>""" if row.get('IsNew') == 1 else ""
-
-            # 👇👇👇 NEW FONT SIZE LOGIC STARTS HERE 👇👇👇
-            item_name_text = row.get('ItemName', 'N/A')
-            name_len = len(str(item_name_text))
-            
-            if name_len < 35:
-                font_size = "9pt"  # Standard size
-            elif name_len < 55:
-                font_size = "8pt"  # Medium shrink
-            else:
-                font_size = "7pt"  # Max shrink for long names
-            # 👆👆👆 NEW FONT SIZE LOGIC ENDS HERE 👆👆👆
-
-            if PRODUCT_CARD_TEMPLATE:
-                card_output = PRODUCT_CARD_TEMPLATE.format(
-                    new_badge_html=new_badge_html,
-                    image_html=image_html_content,
-                    item_name=row.get('ItemName', 'N/A'),
-                    category_name=row['Category'],
-                    ref_no=index+1,
-                    packaging=packaging_text,
-                    sku_info=sku_info,
-                    fragrance=fragrance_output,
-                    font_size=font_size  # 👈 THIS IS THE CRITICAL ADDITION
-                )
-                html_parts.append(card_output)
-
-    def generate_excel_file(df_sorted, customer_name, case_selection_map):
-        output = io.BytesIO()
-        excel_rows = []
-        
-        for idx, row in df_sorted.iterrows():
-            cat = row['Category']
-            suffix = ""; cbm = 0.0
-            if cat in case_selection_map:
-                case_data = case_selection_map[cat]
-                for k in case_data.keys():
-                    if "suffix" in k.lower(): suffix = str(case_data[k]).strip()
-                    if "cbm" in k.lower(): 
-                        try: cbm = round(float(case_data[k]), 3)
-                        except: cbm = 0.0
-                if suffix == 'nan': suffix = ""
-            full_name = str(row['ItemName']).strip()
-            if suffix: full_name = f"{full_name} {suffix}"
-                
-            excel_rows.append({ "Ref No": idx + 1, "Category": cat, "Product Name + Carton Name": full_name, "Carton per CBM": cbm, "Order Quantity (Cartons)": 0, "Total CBM": 0 })
-            
-        df_excel = pd.DataFrame(excel_rows)
-
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df_excel.to_excel(writer, index=False, sheet_name='Order Sheet', startrow=7) 
-            workbook = writer.book; worksheet = writer.sheets['Order Sheet']
-            header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
-            input_fmt = workbook.add_format({'bg_color': '#FFFCB7', 'border': 1, 'locked': False})
-            locked_fmt = workbook.add_format({'border': 1, 'locked': True, 'num_format': '0.000'})
-            count_fmt = workbook.add_format({'num_format': '0.00', 'bold': True, 'border': 1})
-            title_fmt = workbook.add_format({'bold': True, 'font_size': 14})
-            
-            worksheet.protect()
-            worksheet.freeze_panes(8, 0)
-            worksheet.write('B1', f"Order Sheet for: {customer_name}", title_fmt)
-            worksheet.write('B2', 'Total CBM:')
-            worksheet.write_formula('C2', f'=SUM(F9:F{len(df_excel)+9})', workbook.add_format({'num_format': '0.000'}))
-            worksheet.write('B3', 'CONTAINER TYPE', workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1}))
-            worksheet.write('C3', 'ESTIMATED CONTAINERS', workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1}))
-            worksheet.write('B4', '20 FT (30 CBM)', workbook.add_format({'border': 1}))
-            worksheet.write('B5', '40 FT (60 CBM)', workbook.add_format({'border': 1}))
-            worksheet.write('B6', '40 FT HC (70 CBM)', workbook.add_format({'border': 1}))
-            worksheet.write_formula('C4', '=$C$2/30', count_fmt)
-            worksheet.write_formula('C5', '=$C$2/60', count_fmt)
-            worksheet.write_formula('C6', '=$C$2/70', count_fmt)
-
-            for col_num, value in enumerate(df_excel.columns): worksheet.write(7, col_num, value, header_fmt)
-            worksheet.set_column('A:A', 8); worksheet.set_column('B:B', 25); worksheet.set_column('C:C', 50); worksheet.set_column('D:F', 15) 
-            
-            for i in range(len(df_excel)):
-                row_idx = i + 9 
-                worksheet.write(row_idx-1, 4, 0, input_fmt) 
-                worksheet.write_formula(row_idx-1, 5, f'=D{row_idx}*E{row_idx}', locked_fmt)
-
-        return output.getvalue()
-
-    # --- 11. MAIN APP LOGIC ---
+    # --- 12. MAIN APP LOGIC ---
     if True: 
         if "cart" not in st.session_state: st.session_state.cart = []
         if "gen_pdf_bytes" not in st.session_state: st.session_state.gen_pdf_bytes = None
@@ -1201,7 +941,3 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
-
-
-
-
