@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 import sys
-import gc  # Garbage collection
+import gc   # Garbage collection
 
 # --- SAFETY BOOT: CATCH CRASHES & SHOW ON SCREEN ---
 try:
@@ -773,14 +773,16 @@ try:
                     col_filter, col_btns = st.columns([3, 1])
                     with col_filter:
                         st.markdown("#### Filters")
-                        catalogue_options = [NO_SELECTION_PLACEHOLDER] + sorted(products_df['Catalogue'].unique())
+                        # FIX: REMOVED sorted() HERE
+                        catalogue_options = [NO_SELECTION_PLACEHOLDER] + products_df['Catalogue'].unique().tolist()
                         try: default_index_cat = catalogue_options.index(st.session_state.selected_catalogue_dropdown)
                         except ValueError: default_index_cat = 0 
                         sel_cat = st.selectbox("Catalogue", catalogue_options, key="selected_catalogue_dropdown", index=default_index_cat) 
                         
                         if sel_cat != NO_SELECTION_PLACEHOLDER: 
                             catalog_subset_df = products_df[products_df['Catalogue'] == sel_cat]
-                            category_options = sorted(catalog_subset_df['Category'].unique())
+                            # FIX: REMOVED sorted() HERE
+                            category_options = catalog_subset_df['Category'].unique().tolist()
                             
                             valid_defaults_cat = [c for c in st.session_state.selected_categories_multi if c in category_options]
                             if valid_defaults_cat != st.session_state.selected_categories_multi: 
@@ -794,7 +796,8 @@ try:
                                 st.markdown("**Sub-Category Options:**")
                                 for category in sel_cats_multi:
                                     cat_data = catalog_subset_df[catalog_subset_df['Category'] == category]
-                                    raw_subs = sorted(cat_data['Subcategory'].unique())
+                                    # FIX: REMOVED sorted() HERE
+                                    raw_subs = cat_data['Subcategory'].unique().tolist()
                                     
                                     clean_subs = [s for s in raw_subs if str(s).strip().upper() != 'N/A' and str(s).strip().lower() != 'nan' and str(s).strip() != '']
                                     
@@ -903,7 +906,10 @@ try:
                     df_final = pd.DataFrame(cart_data)
                     for col in schema_cols: 
                         if col not in df_final.columns: df_final[col] = ''
-                    df_final = df_final[schema_cols].sort_values(['Catalogue', 'Category', 'Subcategory'])
+                    
+                    # FIX: REMOVED .sort_values() TO KEEP EXCEL/CART ORDER
+                    df_final = df_final[schema_cols]
+                    
                     df_final['SerialNo'] = range(1, len(df_final)+1)
                     
                     st.toast("Generating files...", icon="⏳")
@@ -941,4 +947,3 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
-
