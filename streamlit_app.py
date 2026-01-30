@@ -321,6 +321,8 @@ try:
         seen_categories = set()
         unique_categories = []
         
+        # This relies on df_sorted being ALREADY sorted by Excel order.
+        # df_sorted['Category'].unique() preserves appearance order.
         for cat in df_sorted['Category'].unique():
             if cat not in seen_categories:
                 unique_categories.append(cat)
@@ -374,6 +376,7 @@ try:
         toc_html += """</div><div style="clear: both;"></div></div>"""
         return toc_html
 
+    # --- UPDATED PDF GENERATOR (Fixes Index Placement & Order) ---
     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
             paths_to_check = []
@@ -463,9 +466,18 @@ try:
         
         html_parts = []
         html_parts.append(CSS_STYLES)
+        
+        # 1. Cover Page
         html_parts.append(f"""<div class="cover-page"><div class="cover-image-container"><img src="data:image/png;base64,{cover_bg_b64}"></div></div>""")
-        html_parts.append(generate_story_html(story_img_1_b64))
+        
+        # 2. Table of Contents (NOW MOVED HERE - BEFORE STORY)
+        # Because df_sorted is already sorted by Excel Row order, the TOC will also be in that order.
         html_parts.append(generate_table_of_contents_html(df_sorted))
+        
+        # 3. Story Page
+        html_parts.append(generate_story_html(story_img_1_b64))
+        
+        # 4. Products
         html_parts.append('<div class="catalogue-content clearfix">')
 
         def get_val_fuzzy(row_data, keys_list):
@@ -477,6 +489,7 @@ try:
         current_catalogue = None; current_category = None; current_subcategory = None
         is_first_item = True; category_open = False
 
+        # df_sorted is passed in correctly sorted. We iterate linearly.
         for index, row in df_sorted.iterrows():
             # 1. CATALOGUE HEADER
             if row['Catalogue'] != current_catalogue:
@@ -687,7 +700,8 @@ try:
         selected_pids = {item.get("ProductID") for item in st.session_state.cart if "ProductID" in item}
         if df_to_show.empty: st.info("No products match filters/search."); return
 
-        grouped_by_category = df_to_show.groupby('Category')
+        # --- FIX: ADDED sort=False TO PREVENT ALPHABETICAL SORTING ---
+        grouped_by_category = df_to_show.groupby('Category', sort=False)
         for category, cat_group_df in grouped_by_category:
             cat_count = len(cat_group_df)
             with st.expander(f"{category} ({cat_count})", expanded=is_global_search):
@@ -696,7 +710,8 @@ try:
                     if st.button(f"Add All {cat_count} items", key=f"btn_add_cat_{create_safe_id(category)}"):
                         add_to_cart(cat_group_df)
 
-                for subcategory, subcat_group_df in cat_group_df.groupby('Subcategory'):
+                # --- FIX: ADDED sort=False HERE AS WELL ---
+                for subcategory, subcat_group_df in cat_group_df.groupby('Subcategory', sort=False):
                     subcategory_str = str(subcategory).strip()
                     if subcategory_str.upper() != 'N/A' and subcategory_str.lower() != 'nan': 
                         st.markdown(f"<div class='subcat-header'>{subcategory_str} ({len(subcat_group_df)})</div>", unsafe_allow_html=True)
@@ -907,9 +922,18 @@ try:
                     for col in schema_cols: 
                         if col not in df_final.columns: df_final[col] = ''
                     
-                    # FIX: REMOVED .sort_values() TO KEEP EXCEL/CART ORDER
-                    df_final = df_final[schema_cols]
+                    # --- CRITICAL FIX: RE-SORT CART BASED ON MASTER EXCEL ORDER ---
+                    # This ensures "Index Placement" and Catalogue flow match the Excel hierarchy (Hexa -> Tall -> ...)
+                    products_df = load_data_cached(st.session_state.data_timestamp)
+                    # Map ProductID to its original Index in the master file
+                    pid_to_index = {row['ProductID']: i for i, row in products_df.iterrows()}
                     
+                    if 'ProductID' in df_final.columns:
+                        df_final['excel_sort_order'] = df_final['ProductID'].map(pid_to_index)
+                        df_final = df_final.sort_values('excel_sort_order')
+                        df_final = df_final.drop(columns=['excel_sort_order'])
+                    # -------------------------------------------------------------
+
                     df_final['SerialNo'] = range(1, len(df_final)+1)
                     
                     st.toast("Generating files...", icon="⏳")
