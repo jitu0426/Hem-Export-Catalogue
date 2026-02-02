@@ -283,22 +283,23 @@ try:
 
     # --- 10. PDF GENERATOR ---
     PRODUCT_CARD_TEMPLATE = """
-    <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;">
-        <div style="font-family: sans-serif; font-size: 8pt; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+    <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 8px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; height: 230px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="font-family: sans-serif; font-size: 7pt; color: #888; text-transform: uppercase; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto;">
             {category_name}
         </div>
-        <div style="height: 110px; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 5px; background-color: white; padding: 2px; position: relative;">
+        
+        <div style="height: 150px; width: 100%; background-color: white; position: relative; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; flex: 0 0 auto;">
             {new_badge_html}
             {image_html}
         </div>
-        <div style="text-align: center; padding: 0; height: 40px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-            <h4 style="margin: 0; font-size: {font_size}; color: #000; line-height: 1.1; font-weight: bold; font-family: serif; word-wrap: break-word; max-height: 100%;">
+        
+        <div style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 2px 0;">
+            <h4 style="margin: 0; font-size: {font_size}; color: #000; line-height: 1.1; font-weight: bold; font-family: serif; word-wrap: break-word;">
                 <span style="color: #007bff; margin-right: 4px;">{ref_no}.</span>{item_name}
             </h4>
         </div>
     </div>
     """
-
     def generate_story_html(story_img_1_b64):
         text_block_1 = """HEM Corporation is amongst top global leaders in the manufacturing and export of perfumed agarbattis. For over three decades now we have been parceling out high-quality masala sticks, agarbattis, dhoops, and cones to our customers in more than 70 countries. We are known and established for our superior quality products.<br><br>HEM has been showered with love and accolades all across the globe for its diverse range of products. This makes us the most preferred brand the world over. HEM has been awarded as the ‘Top Exporters’ brand, for incense sticks by the ‘Export Promotion Council for Handicraft’ (EPCH) for three consecutive years from 2008 till 2011.<br><br>We have also been awarded “Niryat Shree” (Export) Silver Trophy in the Handicraft category by ‘Federation of Indian Export Organization’ (FIEO). The award was presented to us by the then Honourable President of India, late Shri Pranab Mukherjee."""
         text_journey_1 = """From a brand that was founded by three brothers in 1983, HEM Fragrances has come a long way. HEM started as a simple incense store offering products like masala agarbatti, thuribles, incense burner and dhoops. However, with time, there was a huge evolution in the world of fragrances much that the customers' needs also started changing. HEM incense can be experienced not only to provide you with rich aromatic experience but also create a perfect ambience for your daily prayers, meditation, and yoga.<br><br>The concept of aromatherapy massage, burning incense sticks and incense herbs for spiritual practices, using aromatherapy diffuser oils to promote healing and relaxation or using palo santo incense to purify and cleanse a space became popular around the world.<br><br>So, while we remained focused on creating our signature line of products, especially the ‘HEM Precious’ range which is a premium flagship collection, there was a dire need to expand our portfolio to meet increasing customer demands."""
