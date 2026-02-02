@@ -545,10 +545,17 @@ try:
                  img_b64 = get_image_as_base64_str(img_url)
                  row["ImageB64"] = img_b64
 
+            # --- Inside the loop in generate_pdf_html ---
             img_b64 = row["ImageB64"] 
             mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
-            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
-            
+
+            # The secret is setting height/width to 'auto' so it doesn't stretch 
+            # while max-height/max-width keeps it inside the box.
+            image_html_content = f'''
+                <img src="data:{mime_type};base64,{img_b64}" 
+                    style="max-height: 145px; max-width: 95%; width: auto; height: auto; object-fit: contain;" 
+                    alt="{row.get("ItemName", "")}">
+            ''' if img_b64 else '<div style="color:#ccc; font-size:10px; padding-top: 60px;">NO IMAGE</div>'
             packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
             sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
             fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
