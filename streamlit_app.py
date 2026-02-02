@@ -922,61 +922,17 @@ try:
                     for col in schema_cols: 
                         if col not in df_final.columns: df_final[col] = ''
                     
-                    # -----------------------------------------------------------
-                    # 1. DEFINE YOUR CUSTOM HIERARCHY HERE
-                    #    (Names must roughly match your Excel Category column)
-                    # -----------------------------------------------------------
-                    CUSTOM_CATEGORY_ORDER = [
-                        "HEXA",
-                        "TALL HEXA",
-                        "PREMIUM MASALA INCENSE HEXA",
-                        "MASALA 15 GMS",
-                        "NEW AGE MASALA 15 GMS",
-                        "UNIVERSAL MASALA GIFT PACK",
-                        "CONE",
-                        "BACK FLOW CONES",
-                        "MASALA CONES",
-                        "POP TALL", # e.g. POP TALL 25 GMS
-                        "7 CHAKRA",
-                        "TALL ECONOMY",
-                        "DHOOP",
-                        "AROMA OIL",
-                        "REED DIFFUSER",
-                        "PRECIOUS SOAPS",
-                        "RESIN",
-                        "RESIN CUP DHOOP COLLECTION",
-                        "CAR FRESHNER",
-                        "SACRED ELEMENT SPRAY & YOG CHAKRA SPRAY",
-                        "SMUDGE TIN CANDLE      90 GMS",
-                        "GLASS JAR SMUDGE CANDLE 185 GMS",
-                        "SMUDGE TEA LIGHT FRAGRANCE CANDLE"
-                        
-                    ]
+                    # --- CRITICAL FIX: RE-SORT CART BASED ON MASTER EXCEL ORDER ---
+                    # This ensures "Index Placement" and Catalogue flow match the Excel hierarchy (Hexa -> Tall -> ...)
+                    products_df = load_data_cached(st.session_state.data_timestamp)
+                    # Map ProductID to its original Index in the master file
+                    pid_to_index = {row['ProductID']: i for i, row in products_df.iterrows()}
                     
-                    # -----------------------------------------------------------
-                    # 2. APPLY CUSTOM SORT LOGIC
-                    # -----------------------------------------------------------
-                    def get_custom_rank(cat_name):
-                        cat_clean = str(cat_name).strip().upper()
-                        
-                        # Check exact or partial matches in the Custom List
-                        for rank, target_name in enumerate(CUSTOM_CATEGORY_ORDER):
-                            if target_name.upper() in cat_clean:
-                                return rank # Found it! Return the priority (0, 1, 2...)
-                        
-                        # If not in the list, put it at the end (Rank 999)
-                        # We add a secondary sort by name to keep them neat
-                        return 999
-
-                    # Apply the ranking
-                    df_final['custom_rank'] = df_final['Category'].apply(get_custom_rank)
-                    
-                    # Sort by Rank first, then Subcategory, then Item Name
-                    df_final = df_final.sort_values(by=['custom_rank', 'Subcategory', 'ItemName'])
-                    
-                    # Remove the temp column
-                    df_final = df_final.drop(columns=['custom_rank'])
-                    # -----------------------------------------------------------
+                    if 'ProductID' in df_final.columns:
+                        df_final['excel_sort_order'] = df_final['ProductID'].map(pid_to_index)
+                        df_final = df_final.sort_values('excel_sort_order')
+                        df_final = df_final.drop(columns=['excel_sort_order'])
+                    # -------------------------------------------------------------
 
                     df_final['SerialNo'] = range(1, len(df_final)+1)
                     
@@ -1015,4 +971,3 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
-
