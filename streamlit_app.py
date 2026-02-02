@@ -113,11 +113,12 @@ try:
     COVER_IMG_PATH = os.path.join(BASE_DIR, "assets", "cover page.png")
     WATERMARK_IMG_PATH = os.path.join(BASE_DIR, "assets", "watermark.png") 
 
+# ✅ UPDATED: Using Raw GitHub URLs for the catalogues
     CATALOGUE_PATHS = {
-        "HEM Product Catalogue": os.path.join(BASE_DIR, "Hem catalogue.xlsx"),
-        "Sacred Elements Catalogue": os.path.join(BASE_DIR, "SacredElement.xlsx"),
-        "Pooja Oil Catalogue": os.path.join(BASE_DIR, "Pooja Oil Catalogue.xlsx"),
-        "Candle Catalogue": os.path.join(BASE_DIR, "Candle Catalogue.xlsx"),
+        "HEM Product Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/Hem%20catalogue.xlsx",
+        "Sacred Elements Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/SacredElement.xlsx",
+        "Pooja Oil Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/Pooja%20Oil%20Catalogue.xlsx",
+        "Candle Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/Candle%20Catalogue.xlsx",
     }
     CASE_SIZE_PATH = os.path.join(BASE_DIR, "Case Size.xlsx")
 
@@ -126,7 +127,7 @@ try:
         "ItemName": "ItemName", "Description": "Fragrance", "SKU Code": "SKU Code",
         "New Product ( Indication )": "IsNew"
     }
-    NO_SELECTION_PLACEHOLDER = "Select..." 
+    NO_SELECTION_PLACEHOLDER = "Select..."
 
     # --- 6. PDFKIT CONFIG ---
     CONFIG = None
@@ -173,12 +174,12 @@ try:
             st.error(f"Failed to save template: {e}")
 
     # --- 8. DATA LOADING (FIXED & CONSOLIDATED) ---
-    @st.cache_data(show_spinner="Syncing Data...")
+    @st.cache_data(show_spinner="Syncing Data from GitHub...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # A. Cloudinary Setup
+        # A. Cloudinary Setup (No changes)
         cloudinary_map = {}
         try:
             cloudinary.api.ping()
@@ -198,7 +199,7 @@ try:
             st.warning(f"⚠️ Cloudinary Warning: {e}")
             cloudinary_map = {} 
 
-        # >>> B. CHECK ADMIN DATABASE FIRST <<<
+        # B. Check Admin Database (No changes)
         DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
         IMAGE_DIR = os.path.join(BASE_DIR, "images")
         data_loaded_from_db = False
@@ -206,7 +207,6 @@ try:
         if os.path.exists(DB_PATH):
             try:
                 with open(DB_PATH, 'r') as f: db_data = json.load(f)
-                
                 if db_data.get("products"):
                     df = pd.DataFrame(db_data["products"])
                     df.rename(columns={"SKUCode": "SKU Code"}, inplace=True)
@@ -220,7 +220,6 @@ try:
                     for index, row in df.iterrows():
                         sku = str(row.get('SKU Code', '')).strip()
                         local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
-                        
                         if os.path.exists(local_img_path):
                              df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
                         else:
@@ -235,12 +234,21 @@ try:
                 print(f"Admin DB Load Failed: {e}. Falling back to Excel.")
                 data_loaded_from_db = False
 
-        # C. Excel Fallback
+        # C. Excel/GitHub Fallback (UPDATED LOGIC)
         if not data_loaded_from_db:
-            for catalogue_name, excel_path in CATALOGUE_PATHS.items():
-                if not os.path.exists(excel_path): continue
+            for catalogue_name, path_ref in CATALOGUE_PATHS.items():
+                # ✅ Logic to handle both GitHub URLs and Local Files
+                target_path = path_ref
+                
+                # If it's a URL, append a timestamp to force fresh download (Cache Busting)
+                if str(path_ref).startswith("http"):
+                    target_path = f"{path_ref}?v={_dummy_timestamp}"
+                elif not os.path.exists(path_ref):
+                    continue # Skip if local file is missing
+
                 try:
-                    df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
+                    # 'engine="openpyxl"' handles URLs correctly
+                    df = pd.read_excel(target_path, sheet_name=0, dtype=str, engine="openpyxl")
                     df = df.fillna("") 
                     df.columns = [str(c).strip() for c in df.columns]
                     df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
@@ -267,7 +275,7 @@ try:
                                 df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
                     
                     all_data.append(df[required_output_cols])
-                except Exception as e: st.error(f"Error reading Excel {catalogue_name}: {e}")
+                except Exception as e: st.error(f"Error reading {catalogue_name}: {e}")
 
             if not all_data: return pd.DataFrame(columns=required_output_cols)
             full_df = pd.concat(all_data, ignore_index=True)
@@ -275,16 +283,19 @@ try:
 
     # --- 10. PDF GENERATOR ---
     PRODUCT_CARD_TEMPLATE = """
-    <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;">
-        <div style="font-family: sans-serif; font-size: 8pt; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+
+    <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 8px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; height: 230px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="font-family: sans-serif; font-size: 7pt; color: #888; text-transform: uppercase; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto;">
             {category_name}
         </div>
-        <div style="height: 110px; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 5px; background-color: white; padding: 2px; position: relative;">
+        
+        <div style="height: 150px; width: 100%; background-color: white; position: relative; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; flex: 0 0 auto;">
             {new_badge_html}
             {image_html}
         </div>
-        <div style="text-align: center; padding: 0; height: 40px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-            <h4 style="margin: 0; font-size: {font_size}; color: #000; line-height: 1.1; font-weight: bold; font-family: serif; word-wrap: break-word; max-height: 100%;">
+        
+        <div style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 2px 0;">
+            <h4 style="margin: 0; font-size: {font_size}; color: #000; line-height: 1.1; font-weight: bold; font-family: serif; word-wrap: break-word;">
                 <span style="color: #007bff; margin-right: 4px;">{ref_no}.</span>{item_name}
             </h4>
         </div>
@@ -537,10 +548,18 @@ try:
                  img_b64 = get_image_as_base64_str(img_url)
                  row["ImageB64"] = img_b64
 
+            # --- REPLACE THE IMAGE CONTENT LOGIC ---
+          # --- Inside the loop in generate_pdf_html ---
             img_b64 = row["ImageB64"] 
             mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
-            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
-            
+
+            # The secret is setting height/width to 'auto' so it doesn't stretch 
+            # while max-height/max-width keeps it inside the box.
+            image_html_content = f'''
+                <img src="data:{mime_type};base64,{img_b64}" 
+                    style="max-height: 145px; max-width: 95%; width: auto; height: auto; object-fit: contain;" 
+                    alt="{row.get("ItemName", "")}">
+            ''' if img_b64 else '<div style="color:#ccc; font-size:10px; padding-top: 60px;">NO IMAGE</div>'      
             packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
             sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
             fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
@@ -941,5 +960,6 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
