@@ -274,26 +274,26 @@ try:
             return full_df
 
     # --- 10. PDF GENERATOR ---
-    # --- UPDATE THIS TEMPLATE ---
     PRODUCT_CARD_TEMPLATE = """
-    <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; height: 210px; overflow: hidden;">
-        <div style="font-family: sans-serif; font-size: 7pt; color: #888; text-transform: uppercase; margin-bottom: 5px; border-bottom: 1px solid #eee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+
+    <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 8px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; height: 230px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="font-family: sans-serif; font-size: 7pt; color: #888; text-transform: uppercase; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto;">
             {category_name}
         </div>
-        <div style="height: 140px; width: 100%; display: block; margin-bottom: 5px; background-color: white; position: relative;">
+        
+        <div style="height: 150px; width: 100%; background-color: white; position: relative; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; flex: 0 0 auto;">
             {new_badge_html}
-            <div style="height: 140px; width: 100%; display: table-cell; vertical-align: middle; text-align: center;">
-                {image_html}
-            </div>
+            {image_html}
         </div>
-        <div style="text-align: center; height: 45px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-            <h4 style="margin: 0; font-size: {font_size}; color: #000; line-height: 1.1; font-weight: bold; font-family: serif;">
+        
+        <div style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 2px 0;">
+            <h4 style="margin: 0; font-size: {font_size}; color: #000; line-height: 1.1; font-weight: bold; font-family: serif; word-wrap: break-word;">
                 <span style="color: #007bff; margin-right: 4px;">{ref_no}.</span>{item_name}
             </h4>
         </div>
     </div>
     """
-
+    
     def generate_story_html(story_img_1_b64):
         text_block_1 = """The universe of incense and smudging is extremely sensory and spiritual one. Whether it's cleansing a revered space with smoky white sage, relieving stress in the haze of palo santo or experiencing occult with our esoteric products, we make your aromatic journey more positive and magical with our widest range of ethically sourced perfumed products"""
         text_journey_1 = """HEM as a brand was founded in 1983 and is known globally for its most comprehensive variety of innovative fragrances. It also has the distinction of being the largest exporter of perfumed incense from India to over 70+ countries across the globe. Our strong belief in the spirit of innovation and creativity has helped us rank as the best incense manufacturing company in India and across the world"""
@@ -541,15 +541,17 @@ try:
                  row["ImageB64"] = img_b64
 
             # --- REPLACE THE IMAGE CONTENT LOGIC ---
+          # --- Inside the loop in generate_pdf_html ---
             img_b64 = row["ImageB64"] 
             mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
 
-            # Use object-fit: contain to prevent stretching/compression
+            # The secret is setting height/width to 'auto' so it doesn't stretch 
+            # while max-height/max-width keeps it inside the box.
             image_html_content = f'''
                 <img src="data:{mime_type};base64,{img_b64}" 
-                    style="max-height: 135px; max-width: 100%; width: auto; height: auto; object-fit: contain; display: inline-block;" 
+                    style="max-height: 145px; max-width: 95%; width: auto; height: auto; object-fit: contain;" 
                     alt="{row.get("ItemName", "")}">
-            ''' if img_b64 else '<div style="color:#ccc; font-size:10px; padding-top: 40px;">IMAGE NOT FOUND</div>'
+            ''' if img_b64 else '<div style="color:#ccc; font-size:10px; padding-top: 60px;">NO IMAGE</div>'      
             packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
             sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
             fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
@@ -950,5 +952,6 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
