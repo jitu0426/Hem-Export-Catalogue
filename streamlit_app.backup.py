@@ -301,8 +301,8 @@ try:
     </div>
     """
     def generate_story_html(story_img_1_b64):
-        text_block_1 = """HEM Corporation is amongst top global leaders in the manufacturing and export of perfumed agarbattis. For over three decades now we have been parceling out high-quality masala sticks, agarbattis, dhoops, and cones to our customers in more than 70 countries. We are known and established for our superior quality products.<br><br>HEM has been showered with love and accolades all across the globe for its diverse range of products. This makes us the most preferred brand the world over. HEM has been awarded as the ‘Top Exporters’ brand, for incense sticks by the ‘Export Promotion Council for Handicraft’ (EPCH) for three consecutive years from 2008 till 2011.<br><br>We have also been awarded “Niryat Shree” (Export) Silver Trophy in the Handicraft category by ‘Federation of Indian Export Organization’ (FIEO). The award was presented to us by the then Honourable President of India, late Shri Pranab Mukherjee."""
-        text_journey_1 = """From a brand that was founded by three brothers in 1983, HEM Fragrances has come a long way. HEM started as a simple incense store offering products like masala agarbatti, thuribles, incense burner and dhoops. However, with time, there was a huge evolution in the world of fragrances much that the customers' needs also started changing. HEM incense can be experienced not only to provide you with rich aromatic experience but also create a perfect ambience for your daily prayers, meditation, and yoga.<br><br>The concept of aromatherapy massage, burning incense sticks and incense herbs for spiritual practices, using aromatherapy diffuser oils to promote healing and relaxation or using palo santo incense to purify and cleanse a space became popular around the world.<br><br>So, while we remained focused on creating our signature line of products, especially the ‘HEM Precious’ range which is a premium flagship collection, there was a dire need to expand our portfolio to meet increasing customer demands."""
+        text_block_1 = """The universe of incense and smudging is extremely sensory and spiritual one. Whether it's cleansing a revered space with smoky white sage, relieving stress in the haze of palo santo or experiencing occult with our esoteric products, we make your aromatic journey more positive and magical with our widest range of ethically sourced perfumed products. ."""
+        text_journey_1 = """HEM as a brand was founded in 1983 and is known globally for its most comprehensive variety of innovative fragrances. It also has the distinction of being the largest exporter of perfumed incense from India to over 70+ countries across the globe. Our strong belief in the spirit of innovation and creativity has helped us rank as the best incense manufacturing company in India and across the world"""
         
         img_tag = ""
         if story_img_1_b64:
@@ -320,7 +320,7 @@ try:
                     {img_tag}
                 </div>
             </div>
-            <h2 style="text-align: center; font-size: 14pt; margin-top: 40px; clear: both;">Innovation, Creativity, Sustainability</h2>
+            # <h2 style="text-align: center; font-size: 14pt; margin-top: 40px; clear: both;">Innovation, Creativity, Sustainability</h2>
         </div>
         """
         return html
@@ -963,3 +963,4 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
