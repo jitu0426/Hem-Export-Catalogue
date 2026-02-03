@@ -114,12 +114,12 @@ try:
     WATERMARK_IMG_PATH = os.path.join(BASE_DIR, "assets", "watermark.png") 
 
 # ✅ UPDATED: Using Raw GitHub URLs for the catalogues
-CATALOGUE_PATHS = {
-    "HEM Product Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/Hem%20catalogue.xlsx",
-    "Sacred Elements Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/SacredElement.xlsx",
-    "Pooja Oil Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/Pooja%20Oil%20Catalogue.xlsx",
-    "Candle Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/Candle%20Catalogue.xlsx",
-}
+    CATALOGUE_PATHS = {
+        "HEM Product Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/Hem%20catalogue.xlsx",
+        "Sacred Elements Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/SacredElement.xlsx",
+        "Pooja Oil Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/Pooja%20Oil%20Catalogue.xlsx",
+        "Candle Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/Candle%20Catalogue.xlsx",
+    }
     CASE_SIZE_PATH = os.path.join(BASE_DIR, "Case Size.xlsx")
 
     GLOBAL_COLUMN_MAPPING = {
