@@ -320,7 +320,6 @@ try:
                     {img_tag}
                 </div>
             </div>
-            # <h2 style="text-align: center; font-size: 14pt; margin-top: 40px; clear: both;">Innovation, Creativity, Sustainability</h2>
         </div>
         """
         return html
@@ -963,4 +962,5 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
