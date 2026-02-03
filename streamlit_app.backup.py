@@ -115,7 +115,7 @@ try:
 
 # ✅ UPDATED: Using Raw GitHub URLs for the catalogues
     CATALOGUE_PATHS = {
-        "HEM Product Catalogue": "https://github.com/jitu0426/Hem-Export-Catalogue/main/Hem%20catalogue.xlsx",
+        "HEM Product Catalogue": "https://raw.github.com/jitu0426/Hem-Export-Catalogue/main/Hem%20catalogue.xlsx",
         "Sacred Elements Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/SacredElement.xlsx",
         "Pooja Oil Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/Pooja%20Oil%20Catalogue.xlsx",
         "Candle Catalogue": "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/Candle%20Catalogue.xlsx",
@@ -962,6 +962,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
