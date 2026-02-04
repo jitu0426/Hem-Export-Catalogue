@@ -35,9 +35,9 @@ try:
 
     # --- 2. CLOUDINARY CONFIG ---
     cloudinary.config(
-        cloud_name = "dnoepbfbr",
-        api_key = "393756212248257",
-        api_secret = "66zA0Je4c0SKqaDcbCglsxPpYGI",
+        cloud_name = "dddtoqebz",
+        api_key = "157864912291655",
+        api_secret = "YkhyT4hxge0fh-zACddSnsI0-S4",
         secure = True
     )
 
@@ -962,6 +962,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
