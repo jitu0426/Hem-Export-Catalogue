@@ -327,46 +327,92 @@ try:
     def generate_table_of_contents_html(df_sorted):
         toc_html = """
         <style>
-            .toc-title { text-align: center; font-family: serif; font-size: 32pt; color: #222; margin-bottom: 20px; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
-            .toc-catalogue-header { 
-                background-color: #333; color: white; font-family: sans-serif; 
-                font-size: 16pt; padding: 10px; margin: 20px 0 10px 0; 
-                text-align: center; border-radius: 5px; clear: both;
+            .toc-title { text-align: center; font-family: serif; font-size: 28pt; color: #222; margin-bottom: 10px; text-transform: uppercase; }
+            
+            /* Each Catalogue Index starts on a fresh page */
+            .catalogue-index-group { 
+                page-break-before: always; 
+                padding: 10mm;
             }
+
+            .toc-catalogue-section-header { 
+                background-color: #333; 
+                color: #ffffff; 
+                font-family: sans-serif; 
+                font-size: 18pt; 
+                padding: 15px; 
+                margin-bottom: 20px; 
+                text-align: left; 
+                border-left: 10px solid #ff9800;
+                text-transform: uppercase;
+            }
+
             .index-grid-container { 
-                display: block; width: 100%; margin: 0 auto; font-size: 0;
+                display: block; 
+                width: 100%; 
+                font-size: 0; 
             }
+            
+            /* Reduced width to 22% for 4-cards-per-row, making them smaller */
             a.index-card-link { 
                 display: inline-block; 
-                width: 30%; 
-                margin: 1.5%; height: 200px; 
-                background-color: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); 
-                text-decoration: none; overflow: hidden; border: 1px solid #e0e0e0; 
-                page-break-inside: avoid; position: relative; z-index: 100; 
+                width: 22%; 
+                margin: 1.5% 1.5%; 
+                height: 180px; 
+                background-color: #fff; 
+                border-radius: 6px; 
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+                text-decoration: none; 
+                overflow: hidden; 
+                border: 1px solid #ddd; 
+                page-break-inside: avoid; 
                 vertical-align: top;
             }
-            .index-card-image { width: 100%; height: 160px; background-repeat: no-repeat; background-position: center center; background-size: cover; background-color: #f9f9f9; }
-            .index-card-label { height: 40px; background-color: #b30000; color: white; font-family: sans-serif; font-size: 9pt; font-weight: bold; display: block; line-height: 40px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; }
+            
+            .index-card-image { 
+                width: 100%; 
+                height: 140px; 
+                background-repeat: no-repeat; 
+                background-position: center center; 
+                background-size: contain; /* Changed to contain to see full product in thumb */
+                background-color: #ffffff; 
+            }
+            
+            .index-card-label { 
+                height: 40px; 
+                background-color: #b30000; 
+                color: white; 
+                font-family: sans-serif; 
+                font-size: 8pt; 
+                font-weight: bold; 
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center; 
+                text-transform: uppercase; 
+                padding: 0 5px; 
+                line-height: 1.2;
+            }
             .clearfix::after { content: ""; clear: both; display: table; }
         </style>
-        <div id="main-index" class="toc-page" style="page-break-after: always; padding: 20px;">
-            <h1 class="toc-title">Index</h1>
+        
+        <div id="main-index">
         """
 
-        # Group data by Catalogue to create sections in the Index
         catalogues = df_sorted['Catalogue'].unique()
 
-        for catalogue in catalogues:
-            toc_html += f'<div class="toc-catalogue-header">{catalogue}</div>'
+        for catalogue_name in catalogues:
+            # Wrap each catalogue index in a div that forces a new page
+            toc_html += f'<div class="catalogue-index-group">'
+            toc_html += f'<h1 class="toc-title">Index</h1>'
+            toc_html += f'<div class="toc-catalogue-section-header">{catalogue_name}</div>'
             toc_html += '<div class="index-grid-container clearfix">'
             
-            cat_df = df_sorted[df_sorted['Catalogue'] == catalogue]
+            cat_df = df_sorted[df_sorted['Catalogue'] == catalogue_name]
             unique_categories = cat_df['Category'].unique()
 
             for category in unique_categories:
                 group = cat_df[cat_df['Category'] == category]
-                
-                # Find the first available image in this category for the thumbnail
                 rep_image = "" 
                 for _, row in group.iterrows():
                     img_str = row.get('ImageB64', '')
@@ -374,20 +420,21 @@ try:
                         rep_image = img_str
                         break 
 
-                bg_style = f"background-image: url('data:image/png;base64,{rep_image}');" if rep_image else "background-color: #eee;" 
+                bg_style = f"background-image: url('data:image/png;base64,{rep_image}');" if rep_image else "background-color: #f0f0f0;" 
                 safe_id = create_safe_id(category)
                 
                 toc_html += f"""
                     <a href="#category-{safe_id}" class="index-card-link">
                         <div class="index-card-image" style="{bg_style}"></div>
-                        <div class="index-card-label">{category}</div>
+                        <div class="index-card-label"><span>{category}</span></div>
                     </a>
                 """
             
-            toc_html += '</div><div style="clear: both; margin-bottom: 20px;"></div>'
+            toc_html += '</div></div>' # Close grid and index-group
 
         toc_html += """</div>"""
         return toc_html
+        
     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
             paths_to_check = []
@@ -968,6 +1015,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
