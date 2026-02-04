@@ -404,7 +404,7 @@ try:
         for catalogue_name in catalogues:
             # Wrap each catalogue index in a div that forces a new page
             toc_html += f'<div class="catalogue-index-group">'
-            toc_html += f'<h1 class="toc-title">Index</h1>'
+            # toc_html += f'<h1 class="toc-title">Index</h1>'
             toc_html += f'<div class="toc-catalogue-section-header">{catalogue_name}</div>'
             toc_html += '<div class="index-grid-container clearfix">'
             
@@ -1015,6 +1015,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
