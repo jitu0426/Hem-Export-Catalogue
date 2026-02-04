@@ -328,89 +328,45 @@ try:
         toc_html = """
         <style>
             .toc-title { text-align: center; font-family: serif; font-size: 32pt; color: #222; margin-bottom: 20px; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
-            
-            /* Catalogue Section Header in Index */
-            .toc-catalogue-section-header { 
-                background-color: #333; 
-                color: #ffffff; 
-                font-family: sans-serif; 
-                font-size: 16pt; 
-                padding: 12px; 
-                margin: 30px 0 15px 0; 
-                text-align: left; 
-                border-left: 8px solid #ff9800;
-                clear: both;
-                page-break-inside: avoid;
+            .toc-catalogue-header { 
+                background-color: #333; color: white; font-family: sans-serif; 
+                font-size: 16pt; padding: 10px; margin: 20px 0 10px 0; 
+                text-align: center; border-radius: 5px; clear: both;
             }
-
             .index-grid-container { 
-                display: block; 
-                width: 100%; 
-                margin: 0 auto; 
-                font-size: 0; /* Fixes inline-block spacing issues */
+                display: block; width: 100%; margin: 0 auto; font-size: 0;
             }
-            
             a.index-card-link { 
                 display: inline-block; 
                 width: 30%; 
-                margin: 1.5%; 
-                height: 200px; 
-                background-color: #fff; 
-                border-radius: 8px; 
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
-                text-decoration: none; 
-                overflow: hidden; 
-                border: 1px solid #e0e0e0; 
-                page-break-inside: avoid; 
+                margin: 1.5%; height: 200px; 
+                background-color: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); 
+                text-decoration: none; overflow: hidden; border: 1px solid #e0e0e0; 
+                page-break-inside: avoid; position: relative; z-index: 100; 
                 vertical-align: top;
             }
-            
-            .index-card-image { 
-                width: 100%; 
-                height: 160px; 
-                background-repeat: no-repeat; 
-                background-position: center center; 
-                background-size: cover; 
-                background-color: #f9f9f9; 
-            }
-            
-            .index-card-label { 
-                height: 40px; 
-                background-color: #b30000; 
-                color: white; 
-                font-family: sans-serif; 
-                font-size: 9pt; 
-                font-weight: bold; 
-                display: block; 
-                line-height: 40px; 
-                text-align: center; 
-                text-transform: uppercase; 
-                letter-spacing: 0.5px; 
-                white-space: nowrap; 
-                overflow: hidden; 
-                text-overflow: ellipsis; 
-                padding: 0 10px; 
-            }
+            .index-card-image { width: 100%; height: 160px; background-repeat: no-repeat; background-position: center center; background-size: cover; background-color: #f9f9f9; }
+            .index-card-label { height: 40px; background-color: #b30000; color: white; font-family: sans-serif; font-size: 9pt; font-weight: bold; display: block; line-height: 40px; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px; }
             .clearfix::after { content: ""; clear: both; display: table; }
         </style>
-    
+        <div id="main-index" class="toc-page" style="page-break-after: always; padding: 20px;">
+            <h1 class="toc-title">Index</h1>
         """
 
-        # Get unique catalogues in the order they appear in the dataframe
+        # Group data by Catalogue to create sections in the Index
         catalogues = df_sorted['Catalogue'].unique()
 
-        for catalogue_name in catalogues:
-            # Add a header for the Catalogue
-            toc_html += f'<div class="toc-catalogue-section-header">{catalogue_name}</div>'
+        for catalogue in catalogues:
+            toc_html += f'<div class="toc-catalogue-header">{catalogue}</div>'
             toc_html += '<div class="index-grid-container clearfix">'
             
-            # Filter data for this specific catalogue
-            cat_df = df_sorted[df_sorted['Catalogue'] == catalogue_name]
+            cat_df = df_sorted[df_sorted['Catalogue'] == catalogue]
             unique_categories = cat_df['Category'].unique()
 
             for category in unique_categories:
-                # Find representative image for this category within this catalogue
                 group = cat_df[cat_df['Category'] == category]
+                
+                # Find the first available image in this category for the thumbnail
                 rep_image = "" 
                 for _, row in group.iterrows():
                     img_str = row.get('ImageB64', '')
@@ -428,12 +384,10 @@ try:
                     </a>
                 """
             
-            # Close grid container for this catalogue
-            toc_html += '</div><div style="clear: both;"></div>'
+            toc_html += '</div><div style="clear: both; margin-bottom: 20px;"></div>'
 
         toc_html += """</div>"""
         return toc_html
-
     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
             paths_to_check = []
@@ -1014,6 +968,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
