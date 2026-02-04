@@ -327,91 +327,111 @@ try:
     def generate_table_of_contents_html(df_sorted):
         toc_html = """
         <style>
-            .toc-title { text-align: center; font-family: serif; font-size: 28pt; color: #222; margin-bottom: 10px; text-transform: uppercase; }
-            
-            /* Each Catalogue Index starts on a fresh page */
-            .catalogue-index-group { 
-                page-break-before: always; 
-                padding: 10mm;
+            /* Reset for Index Pages */
+            .index-page-container {
+                page-break-before: always;
+                padding: 15mm 10mm;
+                font-family: sans-serif;
+                background-color: #ffffff;
+                min-height: 270mm;
             }
 
-            .toc-catalogue-section-header { 
-                background-color: #333; 
-                color: #ffffff; 
-                font-family: sans-serif; 
-                font-size: 18pt; 
-                padding: 15px; 
-                margin-bottom: 20px; 
-                text-align: left; 
-                border-left: 10px solid #ff9800;
+            /* Main Header matching the screenshot style */
+            .index-main-header {
+                background-color: #333;
+                color: #ffffff;
+                text-align: center;
+                padding: 15px 0;
+                font-size: 24pt;
+                font-weight: bold;
                 text-transform: uppercase;
+                margin-bottom: 30px;
+                letter-spacing: 1px;
             }
 
-            .index-grid-container { 
-                display: block; 
-                width: 100%; 
-                font-size: 0; 
+            .index-grid {
+                display: block;
+                width: 100%;
+                clear: both;
             }
-            
-            /* Reduced width to 22% for 4-cards-per-row, making them smaller */
-            a.index-card-link { 
-                display: inline-block; 
-                width: 22%; 
-                margin: 1.5% 1.5%; 
-                height: 180px; 
-                background-color: #fff; 
-                border-radius: 6px; 
-                box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
-                text-decoration: none; 
-                overflow: hidden; 
-                border: 1px solid #ddd; 
-                page-break-inside: avoid; 
+
+            /* 4-Column Grid for professional spacing */
+            a.index-card {
+                display: inline-block;
+                width: 22%;
+                margin: 1%;
+                height: 220px;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                text-decoration: none;
                 vertical-align: top;
+                overflow: hidden;
+                background-color: #fff;
+                transition: transform 0.2s;
             }
-            
-            .index-card-image { 
-                width: 100%; 
-                height: 140px; 
-                background-repeat: no-repeat; 
-                background-position: center center; 
-                background-size: contain; /* Changed to contain to see full product in thumb */
-                background-color: #ffffff; 
-            }
-            
-            .index-card-label { 
-                height: 40px; 
-                background-color: #b30000; 
-                color: white; 
-                font-family: sans-serif; 
-                font-size: 8pt; 
-                font-weight: bold; 
+
+            .index-card-img-box {
+                width: 100%;
+                height: 160px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                text-align: center; 
-                text-transform: uppercase; 
-                padding: 0 5px; 
+                background-color: #ffffff;
+                padding: 10px;
+                box-sizing: border-box;
+            }
+
+            .index-card-img-box img {
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+            }
+
+            .index-no-img {
+                color: #ccc;
+                font-size: 10pt;
+                font-weight: bold;
+                text-transform: uppercase;
+            }
+
+            /* Bottom label matching the theme */
+            .index-card-title {
+                height: 60px;
+                background-color: #b30000;
+                color: #ffffff;
+                font-size: 9pt;
+                font-weight: bold;
+                text-align: center;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 5px;
+                text-transform: uppercase;
                 line-height: 1.2;
             }
-            .clearfix::after { content: ""; clear: both; display: table; }
+
+            .clearfix::after {
+                content: "";
+                clear: both;
+                display: table;
+            }
         </style>
-        
-        <div id="main-index">
+        <div id="index-section">
         """
 
         catalogues = df_sorted['Catalogue'].unique()
 
         for catalogue_name in catalogues:
-            # Wrap each catalogue index in a div that forces a new page
-            toc_html += f'<div class="catalogue-index-group">'
-            # toc_html += f'<h1 class="toc-title">Index</h1>'
-            toc_html += f'<div class="toc-catalogue-section-header">{catalogue_name}</div>'
-            toc_html += '<div class="index-grid-container clearfix">'
+            # Each catalogue starts on a fresh page with the black header
+            toc_html += f'<div class="index-page-container">'
+            toc_html += f'<div class="index-main-header">{catalogue_name}</div>'
+            toc_html += '<div class="index-grid clearfix">'
             
             cat_df = df_sorted[df_sorted['Catalogue'] == catalogue_name]
             unique_categories = cat_df['Category'].unique()
 
             for category in unique_categories:
+                # Find the first valid image in this category
                 group = cat_df[cat_df['Category'] == category]
                 rep_image = "" 
                 for _, row in group.iterrows():
@@ -420,19 +440,23 @@ try:
                         rep_image = img_str
                         break 
 
-                bg_style = f"background-image: url('data:image/png;base64,{rep_image}');" if rep_image else "background-color: #f0f0f0;" 
                 safe_id = create_safe_id(category)
                 
+                # Use real <img> tag instead of background-image for better PDF rendering
+                image_html = f'<img src="data:image/jpeg;base64,{rep_image}">' if rep_image else '<span class="index-no-img">No Image</span>'
+                
                 toc_html += f"""
-                    <a href="#category-{safe_id}" class="index-card-link">
-                        <div class="index-card-image" style="{bg_style}"></div>
-                        <div class="index-card-label"><span>{category}</span></div>
+                    <a href="#category-{safe_id}" class="index-card">
+                        <div class="index-card-img-box">
+                            {image_html}
+                        </div>
+                        <div class="index-card-title">{category}</div>
                     </a>
                 """
             
-            toc_html += '</div></div>' # Close grid and index-group
+            toc_html += '</div></div>' # Close index-grid and index-page-container
 
-        toc_html += """</div>"""
+        toc_html += "</div>"
         return toc_html
         
     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
@@ -1015,6 +1039,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
