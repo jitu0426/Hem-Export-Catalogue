@@ -393,9 +393,7 @@ try:
             }
             .clearfix::after { content: ""; clear: both; display: table; }
         </style>
-        
-        <div id="main-index" class="toc-page" style="page-break-after: always; padding: 20px;">
-            <h1 class="toc-title">Table of Contents</h1>
+    
         """
 
         # Get unique catalogues in the order they appear in the dataframe
@@ -1016,6 +1014,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
