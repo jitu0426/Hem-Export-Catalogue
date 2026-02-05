@@ -181,37 +181,36 @@ try:
         
         # A. Cloudinary Setup (No changes)
       # --- Inside load_data_cached, replace the loop that matches images ---
-
-           if cloudinary_map:
-                        for index, row in df.iterrows():
-                            item_name = str(row['ItemName'])
-                            row_item_key = clean_key(item_name)
-                            found_url = None
+                if cloudinary_map:
+            for index, row in df.iterrows():
+                item_name = str(row['ItemName'])
+                row_item_key = clean_key(item_name)
+                found_url = None
                             
                             # 1. Direct Match check
-                            if row_item_key in cloudinary_map: 
-                                found_url = cloudinary_map[row_item_key]
-                            else:
+                if row_item_key in cloudinary_map: 
+                    found_url = cloudinary_map[row_item_key]
+                else:
                                 # 2. Improved Fuzzy Match for names like "Smudge Organic Bomb"
-                                best_score = 0
-                                for cloud_key, url in cloudinary_map.items():
-                                    score = fuzz.token_sort_ratio(row_item_key, cloud_key)
-                                    if score > best_score:
-                                        best_score = score
-                                        found_url = url
+                    best_score = 0
+                    for cloud_key, url in cloudinary_map.items():
+                        score = fuzz.token_sort_ratio(row_item_key, cloud_key)
+                        if score > best_score:
+                            best_score = score
+                            found_url = url
                                 
                                 # Lowered threshold to 60 to catch longer Cloudinary filenames
-                                if best_score < 60: found_url = None
+                    if best_score < 60: found_url = None
 
-                            if found_url:
-                                try:
-                                    # Use f_auto and q_auto to ensure Cloudinary serves a compatible format
-                                    optimized_url = found_url.replace("/upload/", "/upload/f_auto,q_auto,w_800/")
-                                    # Use .at for reliable assignment within the loop
-                                    img_data = get_image_as_base64_str(optimized_url, max_size=None)
-                                    if img_data:
-                                        df.at[index, "ImageB64"] = img_data
-                                except Exception as e:
+                if found_url:
+                    try:
+                        # Use f_auto and q_auto to ensure Cloudinary serves a compatible format
+                        optimized_url = found_url.replace("/upload/", "/upload/f_auto,q_auto,w_800/")
+                        # Use .at for reliable assignment within the loop
+                        img_data = get_image_as_base64_str(optimized_url, max_size=None)
+                        if img_data:
+                            df.at[index, "ImageB64"] = img_data
+                    except Exception as e:
                                     print(f"Error for {item_name}: {e}")
         # B. Check Admin Database (No changes)
         DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
@@ -1052,6 +1051,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
