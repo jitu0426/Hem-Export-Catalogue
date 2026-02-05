@@ -181,18 +181,31 @@ try:
         
         # ... (Previous code for Cloudinary/DB setup would be here) ...
 
-        # Assuming 'df' is defined in your catalogue loop:
+        # 1. Fetch all images from Cloudinary (Building the Map)
+        cloudinary_map = {}
+        try:
+            # Note: max_results is set to 500; increase if you have more images
+            res = cloudinary.api.resources(type="upload", prefix="", max_results=500)
+            for asset in res.get("resources", []):
+                # We use the public_id as the key (cleaned) and the secure_url as the value
+                clean_cloud_key = clean_key(asset["public_id"])
+                cloudinary_map[clean_cloud_key] = asset["secure_url"]
+        except Exception as e:
+            print(f"Cloudinary API Error: {e}")
+
+        # 2. Match Images to DataFrame rows
         if cloudinary_map:
             for index, row in df.iterrows():
                 item_name = str(row['ItemName'])
                 row_item_key = clean_key(item_name)
                 found_url = None
                 
-                # 1. Direct Match check
+                # A. Direct Match check
                 if row_item_key in cloudinary_map: 
                     found_url = cloudinary_map[row_item_key]
                 else:
-                    # 2. Improved Fuzzy Match for names like "Smudge Organic Bomb"
+                    # B. Improved Fuzzy Match for names like "Smudge Organic Bomb"
+                    # Using token_set_ratio is often better for strings with different word orders
                     best_score = 0
                     for cloud_key, url in cloudinary_map.items():
                         score = fuzz.token_sort_ratio(row_item_key, cloud_key)
@@ -200,20 +213,19 @@ try:
                             best_score = score
                             found_url = url
                     
-                    # Lowered threshold to 60 to catch longer Cloudinary filenames
-                    if best_score < 60: 
+                    # Threshold: 65 is usually the sweet spot for product names
+                    if best_score < 65: 
                         found_url = None
 
                 if found_url:
                     try:
-                        # Use f_auto and q_auto to ensure Cloudinary serves a compatible format
-                        optimized_url = found_url.replace("/upload/", "/upload/f_auto,q_auto,w_800/")
-                        # Use .at for reliable assignment within the loop
+                        # Optimization: Requesting auto-format and specific width reduces B64 string size
+                        optimized_url = found_url.replace("/upload/", "/upload/f_auto,q_auto,w_600/")
                         img_data = get_image_as_base64_str(optimized_url, max_size=None)
                         if img_data:
                             df.at[index, "ImageB64"] = img_data
                     except Exception as e:
-                        print(f"Error for {item_name}: {e}")
+                        print(f"Error converting Cloudinary image for {item_name}: {e}")
         # B. Check Admin Database (No changes)
         DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
         IMAGE_DIR = os.path.join(BASE_DIR, "images")
@@ -1053,6 +1065,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
