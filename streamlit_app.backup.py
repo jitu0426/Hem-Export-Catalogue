@@ -174,47 +174,33 @@ try:
             st.error(f"Failed to save template: {e}")
 
     # --- 8. DATA LOADING (FIXED & CONSOLIDATED) ---
-    @st.cache_data(show_spinner="Syncing Data from GitHub...")
+@st.cache_data(show_spinner="Syncing Data from GitHub...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # A. Cloudinary Setup (No changes)
-      # --- Inside load_data_cached, replace the loop that matches images ---
+        # --- 1. CLOUDINARY SETUP ---
+        cloudinary_map = {}
+        try:
+            cloudinary.api.ping()
+            resources = []
+            next_cursor = None
+            while True:
+                res = cloudinary.api.resources(type="upload", max_results=500, next_cursor=next_cursor)
+                resources.extend(res.get('resources', []))
+                next_cursor = res.get('next_cursor')
+                if not next_cursor: break
+            
+            for res in resources:
+                full_id = res['public_id']
+                filename_only = full_id.split('/')[-1]
+                # Map both full path and filename to ensure matches
+                cloudinary_map[clean_key(full_id)] = res['secure_url']
+                cloudinary_map[clean_key(filename_only)] = res['secure_url']
+        except Exception as e:
+            st.warning(f"⚠️ Cloudinary Fetch Error: {e}")
 
-            if cloudinary_map:
-                for index, row in df.iterrows():
-                    item_name = str(row['ItemName'])
-                    row_item_key = clean_key(item_name)
-                    found_url = None
-                    
-                    # 1. Direct Match
-                    if row_item_key in cloudinary_map: 
-                        found_url = cloudinary_map[row_item_key]
-                    else:
-                        # 2. Fuzzy Match with improved threshold
-                        best_score = 0
-                        for cloud_key, url in cloudinary_map.items():
-                            # We check both ItemName and the cleaned key
-                            score = fuzz.token_sort_ratio(row_item_key, cloud_key)
-                            if score > best_score:
-                                best_score = score
-                                found_url = url
-                        
-                        # If the score is too low, we don't use it
-                        if best_score < 60: found_url = None
-
-                    if found_url:
-                        try:
-                            # Ensure we are using the correct Cloudinary optimization string
-                            optimized_url = found_url.replace("/upload/", "/upload/f_auto,q_auto,w_800/")
-                            b64_data = get_image_as_base64_str(optimized_url, max_size=None)
-                            if b64_data:
-                                df.at[index, "ImageB64"] = b64_data
-                        except Exception as e:
-                            print(f"Error fetching Cloudinary image for {item_name}: {e}") 
-
-        # B. Check Admin Database (No changes)
+        # --- 2. ADMIN DATABASE CHECK ---
         DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
         IMAGE_DIR = os.path.join(BASE_DIR, "images")
         data_loaded_from_db = False
@@ -238,44 +224,12 @@ try:
                         if os.path.exists(local_img_path):
                              df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
                         else:
-                            row_item_key = clean_key(row['ItemName'])
-                            if row_item_key in cloudinary_map:
-                                original_url = cloudinary_map[row_item_key]
-                                optimized_url = original_url.replace("/upload/", "/upload/w_800,q_auto/")
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
-                    
-                    return df[required_output_cols]
-            except Exception as e:
-                print(f"Admin DB Load Failed: {e}. Falling back to Excel.")
-                data_loaded_from_db = False
-
-        # C. Excel/GitHub Fallback (UPDATED LOGIC)
-        if not data_loaded_from_db:
-            for catalogue_name, path_ref in CATALOGUE_PATHS.items():
-                # ✅ Logic to handle both GitHub URLs and Local Files
-                target_path = path_ref
-                
-                # If it's a URL, append a timestamp to force fresh download (Cache Busting)
-                if str(path_ref).startswith("http"):
-                    target_path = f"{path_ref}?v={_dummy_timestamp}"
-                elif not os.path.exists(path_ref):
-                    continue # Skip if local file is missing
-
-                try:
-                    # 'engine="openpyxl"' handles URLs correctly
-                    df = pd.read_excel(target_path, sheet_name=0, dtype=str, engine="openpyxl")
-                    df = df.fillna("") 
-                    df.columns = [str(c).strip() for c in df.columns]
-                    df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
-                    df['Catalogue'] = catalogue_name; df['Packaging'] = 'Default Packaging'; df["ImageB64"] = ""; df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]; df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
-                    for col in required_output_cols:
-                        if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
-
-                    if cloudinary_map:
-                        for index, row in df.iterrows():
-                            row_item_key = clean_key(row['ItemName'])
+                            # Apply improved matching for DB fallback
+                            item_name = str(row['ItemName'])
+                            row_item_key = clean_key(item_name)
                             found_url = None
-                            if row_item_key in cloudinary_map: found_url = cloudinary_map[row_item_key]
+                            if row_item_key in cloudinary_map: 
+                                found_url = cloudinary_map[row_item_key]
                             else:
                                 best_score = 0
                                 for cloud_key, url in cloudinary_map.items():
@@ -283,18 +237,69 @@ try:
                                     if score > best_score:
                                         best_score = score
                                         found_url = url
-                                if best_score < 75: found_url = None
+                                if best_score < 60: found_url = None # Improved Threshold
 
                             if found_url:
-                                optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
+                                optimized_url = found_url.replace("/upload/", "/upload/f_auto,q_auto,w_800/")
+                                df.at[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
                     
-                    all_data.append(df[required_output_cols])
-                except Exception as e: st.error(f"Error reading {catalogue_name}: {e}")
+                    return df[required_output_cols]
+            except Exception as e:
+                print(f"Admin DB Load Failed: {e}. Falling back to Excel.")
 
-            if not all_data: return pd.DataFrame(columns=required_output_cols)
-            full_df = pd.concat(all_data, ignore_index=True)
-            return full_df
+        # --- 3. EXCEL / GITHUB FALLBACK ---
+        for catalogue_name, path_ref in CATALOGUE_PATHS.items():
+            target_path = f"{path_ref}?v={_dummy_timestamp}" if str(path_ref).startswith("http") else path_ref
+            if not str(path_ref).startswith("http") and not os.path.exists(path_ref):
+                continue
+
+            try:
+                df = pd.read_excel(target_path, sheet_name=0, dtype=str, engine="openpyxl")
+                df = df.fillna("") 
+                df.columns = [str(c).strip() for c in df.columns]
+                df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
+                
+                df['Catalogue'] = catalogue_name
+                df['Packaging'] = 'Default Packaging'
+                df["ImageB64"] = ""
+                df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
+                df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
+                
+                for col in required_output_cols:
+                    if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
+
+                if cloudinary_map:
+                    for index, row in df.iterrows():
+                        item_name = str(row['ItemName'])
+                        row_item_key = clean_key(item_name)
+                        found_url = None
+                        
+                        if row_item_key in cloudinary_map: 
+                            found_url = cloudinary_map[row_item_key]
+                        else:
+                            best_score = 0
+                            for cloud_key, url in cloudinary_map.items():
+                                score = fuzz.token_sort_ratio(row_item_key, cloud_key)
+                                if score > best_score:
+                                    best_score = score
+                                    found_url = url
+                            if best_score < 60: found_url = None # Consistent Threshold
+
+                        if found_url:
+                            try:
+                                optimized_url = found_url.replace("/upload/", "/upload/f_auto,q_auto,w_800/")
+                                b64 = get_image_as_base64_str(optimized_url, max_size=None)
+                                if b64:
+                                    df.at[index, "ImageB64"] = b64
+                            except:
+                                continue
+                
+                all_data.append(df[required_output_cols])
+            except Exception as e: 
+                st.error(f"Error reading {catalogue_name}: {e}")
+
+        if not all_data: return pd.DataFrame(columns=required_output_cols)
+        return pd.concat(all_data, ignore_index=True)
 
     # --- 10. PDF GENERATOR ---
     PRODUCT_CARD_TEMPLATE = """
