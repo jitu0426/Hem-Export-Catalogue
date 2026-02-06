@@ -181,50 +181,38 @@ try:
         except Exception as e:
             st.error(f"Failed to save template: {e}")
 
-    # --- 8. DATA LOADING (FOLDER-AWARE MATCHING) ---
-    @st.cache_data(show_spinner="Syncing Data from Cloud & GitHub...")
+    @st.cache_data(show_spinner="Syncing Data from GitHub & Cloudinary...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # 1. Cloudinary Retrieval (Indexed by Folder)
-        # Structure: folder_map = { "folder_key": { "item_key": "url" } }
-        folder_map = {}
-        
+        # --- A. Updated Cloudinary Setup (Folder-Aware Mapping) ---
+        cloudinary_map = {}
         try:
+            cloudinary.api.ping()
             resources = []
             next_cursor = None
             while True:
                 res = cloudinary.api.resources(type="upload", max_results=500, next_cursor=next_cursor)
-                resources.extend(res.get("resources", []))
-                if "next_cursor" in res:
-                    next_cursor = res["next_cursor"]
-                else:
-                    break
+                resources.extend(res.get('resources', []))
+                next_cursor = res.get('next_cursor')
+                if not next_cursor: break
             
-            for asset in resources:
-                # asset["public_id"] -> "CatalogueName/CategoryName/ItemName"
-                # Split path
-                parts = asset["public_id"].split('/')
-                if len(parts) >= 2:
-                    # Item is the last part
-                    filename = parts[-1]
-                    # Folder is everything before
-                    folder_path = "/".join(parts[:-1])
-                    
-                    f_key = normalize_key(folder_path)
-                    i_key = normalize_key(filename)
-                    
-                    if f_key not in folder_map:
-                        folder_map[f_key] = {}
-                    
-                    # Store URL mapped by item name inside that folder
-                    folder_map[f_key][i_key] = asset["secure_url"]
+            for res in resources:
+                # Keep the full path: "Catalogue/Category/Item"
+                full_path = res['public_id'].lower().strip()
+                # Store it in the map
+                cloudinary_map[full_path] = res['secure_url']
                 
-        except Exception as e: 
-            print(f"Cloudinary Sync Warning: {e}")
+                # Also store just the item name as a backup
+                item_only = full_path.split('/')[-1]
+                cloudinary_map[f"backup_{clean_key(item_only)}"] = res['secure_url']
+                
+        except Exception as e:
+            st.warning(f"⚠️ Cloudinary Warning: {e}")
+            cloudinary_map = {} 
 
-        # 2. Check Admin Database
+        # B. Check Admin Database (Keep exact same)
         DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
         IMAGE_DIR = os.path.join(BASE_DIR, "images")
         data_loaded_from_db = False
@@ -243,76 +231,74 @@ try:
                     df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
                     
                     for index, row in df.iterrows():
-                         sku = str(row.get('SKU Code', '')).strip()
-                         local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
-                         if os.path.exists(local_img_path):
-                              df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
+                        sku = str(row.get('SKU Code', '')).strip()
+                        local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
+                        if os.path.exists(local_img_path):
+                            df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
+                        else:
+                            # MATCHING LOGIC FOR DB SECTION
+                            cat_path = f"{str(row['Catalogue']).lower().strip()}/{str(row['Category']).lower().strip()}/{str(row['ItemName']).lower().strip()}"
+                            if cat_path in cloudinary_map:
+                                url = cloudinary_map[cat_path]
+                                df.loc[index, "ImageB64"] = get_image_as_base64_str(url.replace("/upload/", "/upload/w_800,q_auto/"), max_size=None)
                     
                     return df[required_output_cols]
-            except:
+            except Exception as e:
+                print(f"Admin DB Load Failed: {e}. Falling back to Excel.")
                 data_loaded_from_db = False
 
-        # 3. Excel/GitHub Fallback
+        # C. Excel/GitHub Fallback (UPDATED MATCHING)
         if not data_loaded_from_db:
             for catalogue_name, path_ref in CATALOGUE_PATHS.items():
                 target_path = path_ref
                 if str(path_ref).startswith("http"):
                     target_path = f"{path_ref}?v={_dummy_timestamp}"
                 elif not os.path.exists(path_ref):
-                    continue
+                    continue 
 
                 try:
                     df = pd.read_excel(target_path, sheet_name=0, dtype=str, engine="openpyxl")
                     df = df.fillna("") 
                     df.columns = [str(c).strip() for c in df.columns]
                     df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
-                    df['Catalogue'] = catalogue_name
-                    df['Packaging'] = 'Default Packaging'
-                    df["ImageB64"] = ""
-                    df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
-                    df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
-                    
+                    df['Catalogue'] = catalogue_name; df['Packaging'] = 'Default Packaging'; df["ImageB64"] = ""; df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]; df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
                     for col in required_output_cols:
                         if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
 
-                    if folder_map:
+                    if cloudinary_map:
                         for index, row in df.iterrows():
-                            # 1. Determine the expected folder
-                            # We assume structure: "Catalogue Name / Category Name"
-                            # If your Cloudinary structure is just "Category Name", remove 'cat_name' below.
-                            # Based on your prompt: "upload the exact name of catalogue in the exact name of category"
-                            cat_name = row['Catalogue']
-                            category_name = row['Category']
+                            # --- CONSTRUCT FOLDER PATH ---
+                            # Structure: catalogue name / category name / item name
+                            full_target_path = f"{str(row['Catalogue']).lower().strip()}/{str(row['Category']).lower().strip()}/{str(row['ItemName']).lower().strip()}"
                             
-                            # Normalize folder path: "Catalogue/Category"
-                            target_folder_key = normalize_key(f"{cat_name}/{category_name}")
-                            
-                            # 2. Look for that folder
                             found_url = None
-                            if target_folder_key in folder_map:
-                                # Folder found! Now look for item.
-                                item_key = normalize_key(row['ItemName'])
-                                folder_contents = folder_map[target_folder_key]
-                                
-                                # A. Exact Match
-                                if item_key in folder_contents:
-                                    found_url = folder_contents[item_key]
-                                else:
-                                    # B. Fallback: Check if Item Key is IN the file key (e.g. "Palo Santo" vs "Palo Santo.jpg")
-                                    # Since normalize_key strips extensions, exact match usually covers it.
-                                    # But let's handle "Item Name - Suffix" variations
-                                    for f_item, url in folder_contents.items():
-                                        if item_key in f_item or f_item in item_key:
-                                            found_url = url
-                                            break
+                            # 1. Try exact folder path match
+                            if full_target_path in cloudinary_map:
+                                found_url = cloudinary_map[full_target_path]
                             
-                            if found_url:
-                                optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto,f_auto/")
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
+                            # 2. Try Item Name match (backup)
+                            if not found_url:
+                                item_key = f"backup_{clean_key(row['ItemName'])}"
+                                if item_key in cloudinary_map:
+                                    found_url = cloudinary_map[item_key]
 
+                            # 3. Fuzzy match (last resort)
+                            if not found_url:
+                                best_score = 0
+                                row_item_name = str(row['ItemName']).lower().strip()
+                                for cloud_path, url in cloudinary_map.items():
+                                    cloud_item_name = cloud_path.split('/')[-1]
+                                    score = fuzz.token_sort_ratio(row_item_name, cloud_item_name)
+                                    if score > best_score and score > 80:
+                                        best_score = score
+                                        found_url = url
+
+                            if found_url:
+                                optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
+                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
+                    
                     all_data.append(df[required_output_cols])
-                except Exception as e: 
-                    st.error(f"Error reading {catalogue_name}: {e}")
+                except Exception as e: st.error(f"Error reading {catalogue_name}: {e}")
 
             if not all_data: return pd.DataFrame(columns=required_output_cols)
             full_df = pd.concat(all_data, ignore_index=True)
@@ -916,4 +902,5 @@ try:
 
 except Exception as e:
     st.error(f"🚨 CRITICAL ERROR: {e}")
+
 
