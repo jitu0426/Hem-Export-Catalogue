@@ -202,7 +202,7 @@ try:
                 # asset["public_id"] gives: "sacred element catalogue/smudge balls/Smudge Organic Bomb - Palo santo"
                 full_path = asset["public_id"]
                 
-                # Split by '/' and take the last part (the filename) to ignore folders
+                # FIX: Split by '/' and take the last part (the filename) to ignore folders
                 filename = full_path.split('/')[-1] 
                 
                 # Clean the key for matching (removes spaces, -, _)
