@@ -173,6 +173,7 @@ try:
             st.error(f"Failed to save template: {e}")
 
     # --- 8. DATA LOADING (FIXED FOR FOLDER STRUCTURES) ---
+    # --- 8. DATA LOADING (FULL PATH MATCHING FIX) ---
     @st.cache_data(show_spinner="Syncing Data...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
@@ -180,8 +181,7 @@ try:
         
         # --- A. Cloudinary Setup ---
         cloudinary_map = {}
-        # New: Store full paths to help with debugging or advanced matching if needed
-        # But for now, we map the CLEANED FILENAME to the URL
+        
         try:
             cloudinary.api.ping()
             resources = []
@@ -193,28 +193,31 @@ try:
                 if not next_cursor: break
             
             for res in resources:
-                # public_id includes folder: "Sacred Elements Catalogue/Affirmation Ritual Kit/Affirmation_of_Wisdom"
+                # CRITICAL CHANGE: Use the FULL PATH (Folder + Filename)
+                # "Sacred Elements Catalogue/Affirmation Ritual Kit/Affirmation_of_Wisdom"
                 full_path = res['public_id']
-                filename = full_path.split('/')[-1] # "Affirmation_of_Wisdom"
                 
-                # We clean the filename but KEEP the essence (replace _ with space)
-                # This turns "Affirmation_of_Wisdom" -> "affirmation of wisdom"
-                c_key = filename.lower().replace('_', ' ').replace('-', ' ').strip()
+                # 1. Clean Key for Path Matching (Includes Folder Names)
+                # Becomes: "sacred elements catalogue affirmation ritual kit affirmation of wisdom"
+                path_key = full_path.lower().replace('/', ' ').replace('_', ' ').replace('-', ' ').strip()
+                cloudinary_map[path_key] = res['secure_url']
                 
-                # Map this clean key to the secure URL
-                cloudinary_map[c_key] = res['secure_url']
-                
-                # ALSO Map the "SKU" if the filename looks like a code (e.g. "SE001")
-                # This helps if you name files by SKU
-                simple_key = c_key.replace(' ', '')
-                if len(simple_key) < 10 and any(char.isdigit() for char in simple_key):
+                # 2. Clean Key for Direct Filename Match (Fallback)
+                filename = full_path.split('/')[-1]
+                file_key = filename.lower().replace('_', ' ').replace('-', ' ').strip()
+                if file_key not in cloudinary_map: 
+                    cloudinary_map[file_key] = res['secure_url']
+                    
+                # 3. Clean Key for SKU Match
+                simple_key = file_key.replace(' ', '')
+                if len(simple_key) < 12 and any(char.isdigit() for char in simple_key):
                      cloudinary_map[simple_key] = res['secure_url']
 
         except Exception as e:
             st.warning(f"⚠️ Cloudinary Warning: {e}")
             cloudinary_map = {} 
 
-        # --- B. Excel Loading (Standard Logic) ---
+        # --- B. Excel Loading ---
         for catalogue_name, excel_path in CATALOGUE_PATHS.items():
             if not os.path.exists(excel_path): continue
             try:
@@ -233,54 +236,51 @@ try:
                 for col in required_output_cols:
                     if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
 
-                # --- INTELLIGENT MATCHING LOGIC ---
+                # --- MATCHING LOGIC ---
                 if cloudinary_map:
                     for index, row in df.iterrows():
                         item_name = str(row['ItemName']).strip().lower()
                         category = str(row['Category']).strip().lower()
+                        cat_name = str(row['Catalogue']).strip().lower()
                         sku = str(row['SKU Code']).strip().lower().replace(' ', '')
                         
                         found_url = None
 
-                        # 1. SKU MATCH (Best for Codes)
+                        # 1. SKU MATCH 
                         if sku and sku in cloudinary_map:
                             found_url = cloudinary_map[sku]
 
-                        # 2. EXACT NAME MATCH (Best for HEM)
-                        # "Precious Chandan" -> matches "precious chandan"
+                        # 2. FULL PATH CONTEXT MATCH (The Fix for Sacred Elements)
+                        # We combine Catalogue + Category + Item Name to match the Folder Structure
                         if not found_url:
-                            clean_name = item_name.replace('_', ' ').replace('-', ' ').strip()
-                            # Try exact match first
-                            if clean_name in cloudinary_map:
-                                found_url = cloudinary_map[clean_name]
-
-                        # 3. CONTEXT MATCH (The Fix for Sacred Elements)
-                        # Combine "Affirmation Ritual Kit" + "Wisdom" -> "affirmation ritual kit wisdom"
-                        # Compare against "Affirmation of Wisdom"
-                        if not found_url:
-                            # Create a rich search string
-                            context_string = f"{category} {item_name}".replace('catalogue', '').strip()
+                            # "sacred elements affirmation ritual kit wisdom"
+                            context_string = f"{cat_name} {category} {item_name}".replace('catalogue', '').strip()
                             
                             best_score = 0
                             best_match_url = None
                             
                             for cloud_key, url in cloudinary_map.items():
-                                # TOKEN SET RATIO is the magic here.
-                                # It handles partial overlaps perfectly.
-                                # "affirmation ritual kit wisdom" vs "affirmation of wisdom" -> High Score
+                                # token_set_ratio is perfect here. 
+                                # It finds the overlap between Excel Data and Cloudinary Folders
                                 score = fuzz.token_set_ratio(context_string, cloud_key)
                                 
                                 if score > best_score:
                                     best_score = score
                                     best_match_url = url
                             
-                            # Threshold of 85 is usually safe for Token Set Ratio
-                            if best_score > 85:
+                            # High threshold because we are matching so much text
+                            if best_score >= 85:
                                 found_url = best_match_url
+
+                        # 3. FALLBACK: Simple Name Match (For HEM or flat folders)
+                        if not found_url:
+                            clean_name = item_name.replace('_', ' ').replace('-', ' ').strip()
+                            if clean_name in cloudinary_map:
+                                found_url = cloudinary_map[clean_name]
 
                         # 4. FINAL ASSIGNMENT
                         if found_url:
-                            # Optimize URL for faster loading (Width 800px)
+                            # Width 800px optimization
                             optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
                             df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
                 
@@ -290,7 +290,6 @@ try:
         if not all_data: return pd.DataFrame(columns=required_output_cols)
         full_df = pd.concat(all_data, ignore_index=True)
         return full_df
-
     # --- 10. PDF GENERATOR ---
     PRODUCT_CARD_TEMPLATE = """
     <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;">
@@ -1064,5 +1063,6 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
