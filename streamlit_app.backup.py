@@ -75,21 +75,51 @@ try:
     def create_safe_id(text):
         return "".join(c for c in str(text).replace(' ', '-').lower() if c.isalnum() or c == '-').replace('--', '-')
 
-    def normalize_key(text):
+    def normalize_for_matching(text):
         """
-        Simple, safe normalization.
-        Removes spaces, casing, and extensions.
-        Does NOT remove words like 'catalogue' or 'product'.
+        IMPROVED: Normalize text for fuzzy matching while preserving key words.
+        Removes extensions, spaces, underscores, hyphens, and converts to lowercase.
         """
-        if not isinstance(text, str): return ""
-        text = text.lower().strip()
-        # Remove extensions
-        for ext in ['.jpg', '.jpeg', '.png', '.webp']:
-            if text.endswith(ext): text = text[:-len(ext)]
+        if not isinstance(text, str): 
+            return ""
         
-        # Remove only separators, keep the words intact
-        text = text.replace(' ', '').replace('_', '').replace('-', '')
+        text = text.lower().strip()
+        
+        # Remove common image extensions
+        for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp']:
+            if text.endswith(ext): 
+                text = text[:-len(ext)]
+        
+        # Remove special characters but keep alphanumeric
+        text = ''.join(c for c in text if c.isalnum())
+        
         return text
+
+    def fuzzy_match_item(item_name, available_items, threshold=80):
+        """
+        Try to match item_name against available items using fuzzy matching.
+        Returns the best match if score >= threshold, else None.
+        """
+        item_normalized = normalize_for_matching(item_name)
+        
+        # First try exact match
+        if item_normalized in available_items:
+            return available_items[item_normalized]
+        
+        # Then try fuzzy matching
+        best_match = None
+        best_score = 0
+        
+        for available_key, url in available_items.items():
+            score = fuzz.ratio(item_normalized, available_key)
+            if score > best_score:
+                best_score = score
+                best_match = url
+        
+        if best_score >= threshold:
+            return best_match
+        
+        return None
 
     def force_light_theme_setup():
         config_dir = ".streamlit"
@@ -110,6 +140,7 @@ try:
             button[kind="primary"] { background-color: #ff9800 !important; color: white !important; border: none; font-weight: bold; }
             button[kind="secondary"] { background-color: #007bff !important; color: white !important; border: none; font-weight: bold; }
             .subcat-header { background-color: #f8f9fa; padding: 5px 10px; margin: 10px 0 5px 0; border-left: 4px solid #007bff; font-weight: bold; color: #333; }
+            .debug-info { background-color: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 12px; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -181,15 +212,25 @@ try:
         except Exception as e:
             st.error(f"Failed to save template: {e}")
 
-    # --- 8. DATA LOADING (FOLDER-AWARE MATCHING) ---
+    # --- 8. DATA LOADING (IMPROVED FOLDER-AWARE MATCHING) ---
     @st.cache_data(show_spinner="Syncing Data from Cloud & GitHub...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
+        # Store debug info
+        matching_debug = {
+            'total_cloudinary_assets': 0,
+            'folder_structure': {},
+            'matched_items': 0,
+            'unmatched_items': [],
+            'fuzzy_matches': 0
+        }
+        
         # 1. Cloudinary Retrieval (Indexed by Folder)
-        # Structure: folder_map = { "folder_key": { "item_key": "url" } }
+        # Structure: folder_map = { "normalized_folder_path": { "normalized_item": "url" } }
         folder_map = {}
+        raw_folder_map = {}  # Keep original names for debugging
         
         try:
             resources = []
@@ -202,27 +243,41 @@ try:
                 else:
                     break
             
+            matching_debug['total_cloudinary_assets'] = len(resources)
+            
             for asset in resources:
                 # asset["public_id"] -> "CatalogueName/CategoryName/ItemName"
-                # Split path
-                parts = asset["public_id"].split('/')
+                public_id = asset["public_id"]
+                parts = public_id.split('/')
+                
                 if len(parts) >= 2:
-                    # Item is the last part
+                    # Item is the last part (filename)
                     filename = parts[-1]
-                    # Folder is everything before
+                    # Folder is everything before the filename
                     folder_path = "/".join(parts[:-1])
                     
-                    f_key = normalize_key(folder_path)
-                    i_key = normalize_key(filename)
+                    # Normalize keys for matching
+                    normalized_folder = normalize_for_matching(folder_path)
+                    normalized_item = normalize_for_matching(filename)
                     
-                    if f_key not in folder_map:
-                        folder_map[f_key] = {}
+                    # Store in normalized map
+                    if normalized_folder not in folder_map:
+                        folder_map[normalized_folder] = {}
+                        raw_folder_map[normalized_folder] = folder_path  # Keep original for debug
                     
-                    # Store URL mapped by item name inside that folder
-                    folder_map[f_key][i_key] = asset["secure_url"]
-                
+                    folder_map[normalized_folder][normalized_item] = asset["secure_url"]
+                    
+                    # Update debug structure
+                    if folder_path not in matching_debug['folder_structure']:
+                        matching_debug['folder_structure'][folder_path] = []
+                    matching_debug['folder_structure'][folder_path].append(filename)
+            
+            print(f"✅ Loaded {len(resources)} assets from Cloudinary")
+            print(f"📁 Found {len(folder_map)} unique folders")
+            
         except Exception as e: 
-            print(f"Cloudinary Sync Warning: {e}")
+            print(f"❌ Cloudinary Sync Warning: {e}")
+            st.warning(f"Cloudinary sync issue: {e}")
 
         # 2. Check Admin Database
         DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
@@ -248,11 +303,13 @@ try:
                          if os.path.exists(local_img_path):
                               df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
                     
+                    data_loaded_from_db = True
                     return df[required_output_cols]
-            except:
+            except Exception as e:
+                print(f"Database load error: {e}")
                 data_loaded_from_db = False
 
-        # 3. Excel/GitHub Fallback
+        # 3. Excel/GitHub Fallback with IMPROVED MATCHING
         if not data_loaded_from_db:
             for catalogue_name, path_ref in CATALOGUE_PATHS.items():
                 target_path = path_ref
@@ -275,50 +332,86 @@ try:
                     for col in required_output_cols:
                         if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
 
+                    # IMPROVED IMAGE MATCHING LOGIC
                     if folder_map:
+                        print(f"\n🔍 Matching images for: {catalogue_name}")
+                        
                         for index, row in df.iterrows():
-                            # 1. Determine the expected folder
-                            # We assume structure: "Catalogue Name / Category Name"
-                            # If your Cloudinary structure is just "Category Name", remove 'cat_name' below.
-                            # Based on your prompt: "upload the exact name of catalogue in the exact name of category"
-                            cat_name = row['Catalogue']
-                            category_name = row['Category']
+                            cat_name = str(row['Catalogue']).strip()
+                            category_name = str(row['Category']).strip()
+                            item_name = str(row['ItemName']).strip()
                             
-                            # Normalize folder path: "Catalogue/Category"
-                            target_folder_key = normalize_key(f"{cat_name}/{category_name}")
+                            if not cat_name or not category_name or not item_name:
+                                continue
                             
-                            # 2. Look for that folder
+                            # Try multiple folder path variations
+                            folder_variations = [
+                                f"{cat_name}/{category_name}",  # Catalogue/Category
+                                category_name,  # Just Category
+                                cat_name,  # Just Catalogue
+                            ]
+                            
                             found_url = None
-                            if target_folder_key in folder_map:
-                                # Folder found! Now look for item.
-                                item_key = normalize_key(row['ItemName'])
-                                folder_contents = folder_map[target_folder_key]
+                            match_method = None
+                            
+                            # Try each folder variation
+                            for folder_pattern in folder_variations:
+                                normalized_folder = normalize_for_matching(folder_pattern)
                                 
-                                # A. Exact Match
-                                if item_key in folder_contents:
-                                    found_url = folder_contents[item_key]
-                                else:
-                                    # B. Fallback: Check if Item Key is IN the file key (e.g. "Palo Santo" vs "Palo Santo.jpg")
-                                    # Since normalize_key strips extensions, exact match usually covers it.
-                                    # But let's handle "Item Name - Suffix" variations
-                                    for f_item, url in folder_contents.items():
-                                        if item_key in f_item or f_item in item_key:
-                                            found_url = url
-                                            break
+                                if normalized_folder in folder_map:
+                                    folder_items = folder_map[normalized_folder]
+                                    
+                                    # Try exact match first
+                                    item_normalized = normalize_for_matching(item_name)
+                                    if item_normalized in folder_items:
+                                        found_url = folder_items[item_normalized]
+                                        match_method = f"Exact match in '{raw_folder_map.get(normalized_folder, folder_pattern)}'"
+                                        break
+                                    
+                                    # Try fuzzy matching
+                                    found_url = fuzzy_match_item(item_name, folder_items, threshold=75)
+                                    if found_url:
+                                        match_method = f"Fuzzy match in '{raw_folder_map.get(normalized_folder, folder_pattern)}'"
+                                        matching_debug['fuzzy_matches'] += 1
+                                        break
                             
                             if found_url:
+                                # Optimize Cloudinary URL
                                 optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto,f_auto/")
                                 df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
+                                matching_debug['matched_items'] += 1
+                                print(f"  ✅ {item_name[:40]:<40} -> {match_method}")
+                            else:
+                                matching_debug['unmatched_items'].append({
+                                    'catalogue': cat_name,
+                                    'category': category_name,
+                                    'item': item_name
+                                })
+                                print(f"  ❌ {item_name[:40]:<40} -> No match found")
 
                     all_data.append(df[required_output_cols])
+                    
                 except Exception as e: 
                     st.error(f"Error reading {catalogue_name}: {e}")
+                    print(f"❌ Error reading {catalogue_name}: {e}")
 
-            if not all_data: return pd.DataFrame(columns=required_output_cols)
+            if not all_data: 
+                return pd.DataFrame(columns=required_output_cols)
+            
             full_df = pd.concat(all_data, ignore_index=True)
+            
+            # Store debug info in session state for display
+            st.session_state['matching_debug'] = matching_debug
+            
+            print(f"\n📊 MATCHING SUMMARY:")
+            print(f"   Total Items: {len(full_df)}")
+            print(f"   Matched: {matching_debug['matched_items']}")
+            print(f"   Fuzzy Matches: {matching_debug['fuzzy_matches']}")
+            print(f"   Unmatched: {len(matching_debug['unmatched_items'])}")
+            
             return full_df
 
-    # --- 10. PDF GENERATOR ---
+    # --- 10. PDF GENERATOR (unchanged) ---
     PRODUCT_CARD_TEMPLATE = """
     <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 8px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; height: 230px; overflow: hidden; display: flex; flex-direction: column;">
         <div style="font-family: sans-serif; font-size: 7pt; color: #888; text-transform: uppercase; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto;">
@@ -681,6 +774,23 @@ try:
         products_df = load_data_cached(st.session_state.data_timestamp)
         st.session_state['master_pid_map'] = {row['ProductID']: row.to_dict() for _, row in products_df.iterrows()}
 
+        # Display debug info if available
+        if 'matching_debug' in st.session_state:
+            debug = st.session_state['matching_debug']
+            with st.sidebar:
+                st.markdown("### 🔍 Image Matching Debug")
+                st.metric("Total Cloudinary Assets", debug['total_cloudinary_assets'])
+                st.metric("Matched Items", debug['matched_items'])
+                st.metric("Fuzzy Matches", debug['fuzzy_matches'])
+                st.metric("Unmatched Items", len(debug['unmatched_items']))
+                
+                if st.checkbox("Show Folder Structure"):
+                    st.json(debug['folder_structure'])
+                
+                if st.checkbox("Show Unmatched Items"):
+                    for item in debug['unmatched_items'][:20]:  # Show first 20
+                        st.text(f"{item['catalogue']} > {item['category']} > {item['item']}")
+
         with st.sidebar:
             st.header("📂 Manage Templates")
             with st.expander("Save Current Cart"):
@@ -833,3 +943,5 @@ try:
 
 except Exception as e:
     st.error(f"🚨 CRITICAL ERROR: {e}")
+    import traceback
+    st.code(traceback.format_exc())
