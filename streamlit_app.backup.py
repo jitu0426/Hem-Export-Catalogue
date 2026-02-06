@@ -174,6 +174,7 @@ try:
 
     # --- 8. DATA LOADING (FIXED FOR FOLDER STRUCTURES) ---
     # --- 8. DATA LOADING (FULL PATH MATCHING FIX) ---
+   # --- 8. DATA LOADING (EXTENSION & PUNCTUATION FIX) ---
     @st.cache_data(show_spinner="Syncing Data...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
@@ -187,30 +188,45 @@ try:
             resources = []
             next_cursor = None
             while True:
+                # Fetch all images
                 res = cloudinary.api.resources(type="upload", max_results=500, next_cursor=next_cursor)
                 resources.extend(res.get('resources', []))
                 next_cursor = res.get('next_cursor')
                 if not next_cursor: break
             
             for res in resources:
-                # CRITICAL CHANGE: Use the FULL PATH (Folder + Filename)
-                # "Sacred Elements Catalogue/Affirmation Ritual Kit/Affirmation_of_Wisdom"
                 full_path = res['public_id']
+                # "Sacred Elements Catalogue/WITCHCRAFT POUCH/Enchanted Smoke (10 sticks).jpg"
+
+                # 1. REMOVE EXTENSION (Crucial Fix)
+                # Split by dot and take the first part, or just strip common extensions
+                clean_path_str = full_path.lower()
+                for ext in ['.jpg', '.jpeg', '.png', '.webp']:
+                    if clean_path_str.endswith(ext):
+                        clean_path_str = clean_path_str[:-len(ext)]
                 
-                # 1. Clean Key for Path Matching (Includes Folder Names)
-                # Becomes: "sacred elements catalogue affirmation ritual kit affirmation of wisdom"
-                path_key = full_path.lower().replace('/', ' ').replace('_', ' ').replace('-', ' ').strip()
-                cloudinary_map[path_key] = res['secure_url']
+                # 2. REMOVE PARENTHESES & UNDERSCORES
+                # Becomes: "sacred elements catalogue witchcraft pouch enchanted smoke 10 sticks"
+                clean_path_str = clean_path_str.replace('_', ' ').replace('-', ' ').replace('(', '').replace(')', '').replace('/', ' ').strip()
                 
-                # 2. Clean Key for Direct Filename Match (Fallback)
+                # Store mapped to URL
+                cloudinary_map[clean_path_str] = res['secure_url']
+
+                # 3. Create a Filename-Only Key (Fallback)
                 filename = full_path.split('/')[-1]
-                file_key = filename.lower().replace('_', ' ').replace('-', ' ').strip()
-                if file_key not in cloudinary_map: 
-                    cloudinary_map[file_key] = res['secure_url']
-                    
-                # 3. Clean Key for SKU Match
-                simple_key = file_key.replace(' ', '')
-                if len(simple_key) < 12 and any(char.isdigit() for char in simple_key):
+                # Remove extension from filename too
+                clean_filename = filename.lower()
+                for ext in ['.jpg', '.jpeg', '.png', '.webp']:
+                    if clean_filename.endswith(ext):
+                        clean_filename = clean_filename[:-len(ext)]
+                
+                clean_filename = clean_filename.replace('_', ' ').replace('-', ' ').replace('(', '').replace(')', '').strip()
+                if clean_filename not in cloudinary_map: 
+                    cloudinary_map[clean_filename] = res['secure_url']
+                
+                # 4. SKU Key
+                simple_key = clean_filename.replace(' ', '')
+                if len(simple_key) < 15 and any(char.isdigit() for char in simple_key):
                      cloudinary_map[simple_key] = res['secure_url']
 
         except Exception as e:
@@ -226,7 +242,6 @@ try:
                 df.columns = [str(c).strip() for c in df.columns]
                 df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
                 
-                # Standard Field Setup
                 df['Catalogue'] = catalogue_name
                 df['Packaging'] = 'Default Packaging'
                 df["ImageB64"] = ""
@@ -239,48 +254,48 @@ try:
                 # --- MATCHING LOGIC ---
                 if cloudinary_map:
                     for index, row in df.iterrows():
-                        item_name = str(row['ItemName']).strip().lower()
-                        category = str(row['Category']).strip().lower()
-                        cat_name = str(row['Catalogue']).strip().lower()
-                        sku = str(row['SKU Code']).strip().lower().replace(' ', '')
+                        # CLEAN EXCEL DATA SAME AS CLOUDINARY
+                        item_name_raw = str(row['ItemName']).strip().lower()
+                        item_clean = item_name_raw.replace('_', ' ').replace('-', ' ').replace('(', '').replace(')', '').strip()
+                        
+                        cat_raw = str(row['Category']).strip().lower()
+                        cat_clean = cat_raw.replace('_', ' ').replace('-', ' ').replace('(', '').replace(')', '').strip()
+                        
+                        catalogue_clean = str(row['Catalogue']).strip().lower().replace('catalogue', '').strip()
+                        sku_clean = str(row['SKU Code']).strip().lower().replace(' ', '')
                         
                         found_url = None
 
-                        # 1. SKU MATCH 
-                        if sku and sku in cloudinary_map:
-                            found_url = cloudinary_map[sku]
+                        # 1. SKU MATCH
+                        if sku_clean and sku_clean in cloudinary_map:
+                            found_url = cloudinary_map[sku_clean]
 
-                        # 2. FULL PATH CONTEXT MATCH (The Fix for Sacred Elements)
-                        # We combine Catalogue + Category + Item Name to match the Folder Structure
+                        # 2. EXACT FILENAME MATCH (High Accuracy now that extensions are gone)
                         if not found_url:
-                            # "sacred elements affirmation ritual kit wisdom"
-                            context_string = f"{cat_name} {category} {item_name}".replace('catalogue', '').strip()
+                            if item_clean in cloudinary_map:
+                                found_url = cloudinary_map[item_clean]
+
+                        # 3. FULL PATH CONTEXT MATCH
+                        if not found_url:
+                            # Combine: "sacred elements witchcraft pouch enchanted smoke 10 sticks"
+                            context_string = f"{catalogue_clean} {cat_clean} {item_clean}".strip()
                             
                             best_score = 0
                             best_match_url = None
                             
                             for cloud_key, url in cloudinary_map.items():
-                                # token_set_ratio is perfect here. 
-                                # It finds the overlap between Excel Data and Cloudinary Folders
+                                # Token Set Ratio ignores order and handles subsets
                                 score = fuzz.token_set_ratio(context_string, cloud_key)
-                                
                                 if score > best_score:
                                     best_score = score
                                     best_match_url = url
                             
-                            # High threshold because we are matching so much text
-                            if best_score >= 85:
+                            # Threshold
+                            if best_score >= 88:
                                 found_url = best_match_url
 
-                        # 3. FALLBACK: Simple Name Match (For HEM or flat folders)
-                        if not found_url:
-                            clean_name = item_name.replace('_', ' ').replace('-', ' ').strip()
-                            if clean_name in cloudinary_map:
-                                found_url = cloudinary_map[clean_name]
-
-                        # 4. FINAL ASSIGNMENT
                         if found_url:
-                            # Width 800px optimization
+                            # Optimize URL
                             optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
                             df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
                 
@@ -1063,6 +1078,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
