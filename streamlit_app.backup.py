@@ -365,21 +365,102 @@ try:
     def generate_table_of_contents_html(df_sorted):
         toc_html = """
         <style>
-            .index-page-container { page-break-before: always; padding: 15mm 10mm; font-family: sans-serif; background-color: #ffffff; min-height: 270mm; }
-            .index-main-header { background-color: #333; color: #ffffff; text-align: center; padding: 15px 0; font-size: 24pt; font-weight: bold; text-transform: uppercase; margin-bottom: 30px; letter-spacing: 1px; }
-            .index-grid { display: block; width: 100%; clear: both; }
-            a.index-card { display: inline-block; width: 22%; margin: 1%; height: 220px; border: 1px solid #e0e0e0; border-radius: 4px; text-decoration: none; vertical-align: top; overflow: hidden; background-color: #fff; transition: transform 0.2s; }
-            .index-card-img-box { width: 100%; height: 160px; display: flex; align-items: center; justify-content: center; background-color: #ffffff; padding: 10px; box-sizing: border-box; }
-            .index-card-img-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
-            .index-no-img { color: #ccc; font-size: 10pt; font-weight: bold; text-transform: uppercase; }
-            .index-card-title { height: 60px; background-color: #b30000; color: #ffffff; font-size: 9pt; font-weight: bold; text-align: center; display: flex; align-items: center; justify-content: center; padding: 5px; text-transform: uppercase; line-height: 1.2; }
-            .clearfix::after { content: ""; clear: both; display: table; }
+            /* Reset for Index Pages */
+            .index-page-container {
+                page-break-before: always;
+                padding: 15mm 10mm;
+                font-family: sans-serif;
+                background-color: #ffffff;
+                min-height: 270mm;
+            }
+
+            /* Main Header matching the screenshot style */
+            .index-main-header {
+                background-color: #333;
+                color: #ffffff;
+                text-align: center;
+                padding: 15px 0;
+                font-size: 24pt;
+                font-weight: bold;
+                text-transform: uppercase;
+                margin-bottom: 30px;
+                letter-spacing: 1px;
+            }
+
+            .index-grid {
+                display: block;
+                width: 100%;
+                clear: both;
+            }
+
+            /* 4-Column Grid for professional spacing */
+            a.index-card {
+                display: inline-block;
+                width: 22%;
+                margin: 1%;
+                height: 220px;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                text-decoration: none;
+                vertical-align: top;
+                overflow: hidden;
+                background-color: #fff;
+                transition: transform 0.2s;
+            }
+
+            .index-card-img-box {
+                width: 100%;
+                height: 160px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background-color: #ffffff;
+                padding: 10px;
+                box-sizing: border-box;
+            }
+
+            .index-card-img-box img {
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+            }
+
+            .index-no-img {
+                color: #ccc;
+                font-size: 10pt;
+                font-weight: bold;
+                text-transform: uppercase;
+            }
+
+            /* Bottom label matching the theme */
+            .index-card-title {
+                height: 60px;
+                background-color: #b30000;
+                color: #ffffff;
+                font-size: 9pt;
+                font-weight: bold;
+                text-align: center;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 5px;
+                text-transform: uppercase;
+                line-height: 1.2;
+            }
+
+            .clearfix::after {
+                content: "";
+                clear: both;
+                display: table;
+            }
         </style>
         <div id="main-index">
         """
 
         catalogues = df_sorted['Catalogue'].unique()
+
         for catalogue_name in catalogues:
+            # Each catalogue starts on a fresh page with the black header
             toc_html += f'<div class="index-page-container">'
             toc_html += f'<div class="index-main-header">{catalogue_name}</div>'
             toc_html += '<div class="index-grid clearfix">'
@@ -388,6 +469,7 @@ try:
             unique_categories = cat_df['Category'].unique()
 
             for category in unique_categories:
+                # Find the first valid image in this category
                 group = cat_df[cat_df['Category'] == category]
                 rep_image = "" 
                 for _, row in group.iterrows():
@@ -397,6 +479,8 @@ try:
                         break 
 
                 safe_id = create_safe_id(category)
+                
+                # Use real <img> tag instead of background-image for better PDF rendering
                 image_html = f'<img src="data:image/jpeg;base64,{rep_image}">' if rep_image else '<span class="index-no-img">No Image</span>'
                 
                 toc_html += f"""
@@ -408,11 +492,10 @@ try:
                     </a>
                 """
             
-            toc_html += '</div></div>'
+            toc_html += '</div></div>' # Close index-grid and index-page-container
 
         toc_html += "</div>"
         return toc_html
-        
     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
             paths_to_check = []
@@ -833,3 +916,4 @@ try:
 
 except Exception as e:
     st.error(f"🚨 CRITICAL ERROR: {e}")
+
