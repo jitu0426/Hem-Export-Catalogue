@@ -34,7 +34,6 @@ try:
         HAS_WEASYPRINT = False
 
     # --- 2. CLOUDINARY CONFIG ---
-    # configured with your provided credentials
     cloudinary.config(
         cloud_name = "dddtoqebz",
         api_key = "157864912291655",
@@ -49,7 +48,6 @@ try:
             img = None
             if str(url_or_path).startswith("http"):
                 headers = {"User-Agent": "Mozilla/5.0"}
-                # Increased timeout slightly for safer fetching
                 response = requests.get(url_or_path, headers=headers, timeout=10)
                 if response.status_code != 200:
                     return ""
@@ -79,7 +77,13 @@ try:
 
     def clean_key(text):
         if not isinstance(text, str): return ""
-        text = text.lower().strip().replace(' ', '').replace('_', '').replace('-', '')
+        # Remove extensions if they exist in the text to ensure match
+        text = text.lower().strip()
+        if text.endswith(".jpg"): text = text[:-4]
+        if text.endswith(".png"): text = text[:-4]
+        if text.endswith(".jpeg"): text = text[:-5]
+        
+        text = text.replace(' ', '').replace('_', '').replace('-', '')
         for stop_word in ['catalogue', 'image', 'images', 'product', 'products', 'img']:
             text = text.replace(stop_word, '')
         return text
@@ -174,19 +178,19 @@ try:
         except Exception as e:
             st.error(f"Failed to save template: {e}")
 
-    # --- 8. DATA LOADING ---
+    # --- 8. DATA LOADING (FIXED FOR FOLDERS) ---
     @st.cache_data(show_spinner="Syncing Data from Cloud & GitHub...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # 1. Cloudinary Map Retrieval
+        # 1. Cloudinary Map Retrieval (FIXED FOR NESTED FOLDERS)
         cloudinary_map = {} 
         try:
-            # Added next_cursor logic to ensure we get ALL images if > 500
             resources = []
             next_cursor = None
             while True:
+                # Loop to get ALL images (Cloudinary has a limit of 500 per call)
                 res = cloudinary.api.resources(type="upload", max_results=500, next_cursor=next_cursor)
                 resources.extend(res.get("resources", []))
                 if "next_cursor" in res:
@@ -195,8 +199,17 @@ try:
                     break
             
             for asset in resources:
-                key = clean_key(asset["public_id"])
+                # asset["public_id"] gives: "sacred element catalogue/smudge balls/Smudge Organic Bomb - Palo santo"
+                full_path = asset["public_id"]
+                
+                # Split by '/' and take the last part (the filename) to ignore folders
+                filename = full_path.split('/')[-1] 
+                
+                # Clean the key for matching (removes spaces, -, _)
+                key = clean_key(filename)
+                
                 cloudinary_map[key] = asset["secure_url"]
+                
         except Exception as e: 
             print(f"Cloudinary Sync Warning: {e}")
 
@@ -260,13 +273,15 @@ try:
 
                     if cloudinary_map:
                         for index, row in df.iterrows():
+                            # Clean the Item Name from Excel
                             row_item_key = clean_key(row['ItemName'])
                             found_url = None
                             
-                            # A. Direct Match
+                            # A. Direct Match (This works now because we stripped folder paths above)
                             if row_item_key in cloudinary_map: 
                                 found_url = cloudinary_map[row_item_key]
-                            # B. Fuzzy Match
+                            
+                            # B. Fuzzy Match (Fallback)
                             else:
                                 best_score = 0
                                 for cloud_key, url in cloudinary_map.items():
@@ -274,10 +289,10 @@ try:
                                     if score > best_score:
                                         best_score = score
                                         found_url = url
-                                if best_score < 75: found_url = None
+                                if best_score < 70: found_url = None
 
                             if found_url:
-                                # Added f_auto for better format support
+                                # f_auto helps Cloudinary serve the best format (WebP/JPG)
                                 optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto,f_auto/")
                                 df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
                     
