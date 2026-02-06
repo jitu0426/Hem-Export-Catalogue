@@ -77,13 +77,15 @@ try:
 
     def clean_key(text):
         if not isinstance(text, str): return ""
-        # Remove extensions if they exist in the text to ensure match
         text = text.lower().strip()
-        if text.endswith(".jpg"): text = text[:-4]
-        if text.endswith(".png"): text = text[:-4]
-        if text.endswith(".jpeg"): text = text[:-5]
+        # Remove extensions
+        for ext in ['.jpg', '.jpeg', '.png', '.webp']:
+            if text.endswith(ext): text = text[:-len(ext)]
         
+        # Remove separators
         text = text.replace(' ', '').replace('_', '').replace('-', '')
+        
+        # Remove stop words that might confuse matching
         for stop_word in ['catalogue', 'image', 'images', 'product', 'products', 'img']:
             text = text.replace(stop_word, '')
         return text
@@ -178,19 +180,19 @@ try:
         except Exception as e:
             st.error(f"Failed to save template: {e}")
 
-    # --- 8. DATA LOADING (FIXED FOR FOLDERS) ---
+    # --- 8. DATA LOADING (IMPROVED SMART MATCHING) ---
     @st.cache_data(show_spinner="Syncing Data from Cloud & GitHub...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # 1. Cloudinary Map Retrieval (FIXED FOR NESTED FOLDERS)
-        cloudinary_map = {} 
+        # 1. Cloudinary Retrieval (Smart Map)
+        # We store tuples of (cleaned_filename, cleaned_fullpath, url)
+        cloudinary_assets = [] 
         try:
             resources = []
             next_cursor = None
             while True:
-                # Loop to get ALL images (Cloudinary has a limit of 500 per call)
                 res = cloudinary.api.resources(type="upload", max_results=500, next_cursor=next_cursor)
                 resources.extend(res.get("resources", []))
                 if "next_cursor" in res:
@@ -199,16 +201,15 @@ try:
                     break
             
             for asset in resources:
-                # asset["public_id"] gives: "sacred element catalogue/smudge balls/Smudge Organic Bomb - Palo santo"
-                full_path = asset["public_id"]
+                full_path = asset["public_id"] 
+                filename = full_path.split('/')[-1] # Extract just the file name
                 
-                # FIX: Split by '/' and take the last part (the filename) to ignore folders
-                filename = full_path.split('/')[-1] 
-                
-                # Clean the key for matching (removes spaces, -, _)
-                key = clean_key(filename)
-                
-                cloudinary_map[key] = asset["secure_url"]
+                # We store both clean versions to match against
+                cloudinary_assets.append({
+                    "clean_filename": clean_key(filename),
+                    "clean_fullpath": clean_key(full_path),
+                    "url": asset["secure_url"]
+                })
                 
         except Exception as e: 
             print(f"Cloudinary Sync Warning: {e}")
@@ -231,21 +232,15 @@ try:
                     df["ImageB64"] = "" 
                     df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
                     
+                    # (Admin DB Logic abbreviated, uses local files usually)
                     for index, row in df.iterrows():
-                        sku = str(row.get('SKU Code', '')).strip()
-                        local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
-                        if os.path.exists(local_img_path):
-                             df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
-                        else:
-                            row_item_key = clean_key(row['ItemName'])
-                            if row_item_key in cloudinary_map:
-                                original_url = cloudinary_map[row_item_key]
-                                optimized_url = original_url.replace("/upload/", "/upload/w_800,q_auto,f_auto/")
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
+                         sku = str(row.get('SKU Code', '')).strip()
+                         local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
+                         if os.path.exists(local_img_path):
+                              df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
                     
                     return df[required_output_cols]
-            except Exception as e:
-                print(f"Admin DB Load Failed: {e}. Falling back to Excel.")
+            except:
                 data_loaded_from_db = False
 
         # 3. Excel/GitHub Fallback
@@ -271,28 +266,40 @@ try:
                     for col in required_output_cols:
                         if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
 
-                    if cloudinary_map:
+                    if cloudinary_assets:
                         for index, row in df.iterrows():
                             # Clean the Item Name from Excel
-                            row_item_key = clean_key(row['ItemName'])
+                            item_key = clean_key(row['ItemName'])
                             found_url = None
                             
-                            # A. Direct Match (This works now because we stripped folder paths above)
-                            if row_item_key in cloudinary_map: 
-                                found_url = cloudinary_map[row_item_key]
+                            # --- SMART MATCHING LOGIC ---
+                            # 1. Exact Filename Match (Best)
+                            for asset in cloudinary_assets:
+                                if asset["clean_filename"] == item_key:
+                                    found_url = asset["url"]
+                                    break
                             
-                            # B. Fuzzy Match (Fallback)
-                            else:
+                            # 2. Substring Match (If Exact failed)
+                            # e.g. Excel: "Smudge Organic" matches Cloudinary: "Smudge Organic Bomb"
+                            if not found_url:
+                                for asset in cloudinary_assets:
+                                    if item_key in asset["clean_filename"] or asset["clean_filename"] in item_key:
+                                        found_url = asset["url"]
+                                        break
+                                        
+                            # 3. Fuzzy Match (Last Resort)
+                            if not found_url:
                                 best_score = 0
-                                for cloud_key, url in cloudinary_map.items():
-                                    score = fuzz.token_sort_ratio(row_item_key, cloud_key)
+                                for asset in cloudinary_assets:
+                                    # Compare against filename primarily
+                                    score = fuzz.token_sort_ratio(item_key, asset["clean_filename"])
                                     if score > best_score:
                                         best_score = score
-                                        found_url = url
+                                        found_url = asset["url"]
                                 if best_score < 70: found_url = None
 
                             if found_url:
-                                # f_auto helps Cloudinary serve the best format (WebP/JPG)
+                                # f_auto helps Cloudinary serve the best format
                                 optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto,f_auto/")
                                 df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
                     
@@ -729,10 +736,19 @@ try:
                 cart_df = pd.DataFrame(st.session_state.cart)
                 cart_df['Remove'] = False
                 edited = st.data_editor(cart_df[['Catalogue', 'Category', 'ItemName', 'Remove']], hide_index=True, use_container_width=True)
-                if st.button("Update Cart (Remove Selected)"):
-                    pids_to_rem = cart_df.loc[edited[edited['Remove']].index, 'ProductID'].tolist()
-                    remove_from_cart(pids_to_rem)
-                    st.rerun()
+                
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("Remove Selected Items"):
+                        pids_to_rem = cart_df.loc[edited[edited['Remove']].index, 'ProductID'].tolist()
+                        remove_from_cart(pids_to_rem)
+                        st.rerun()
+                with c2:
+                    if st.button("Empty Entire Cart", type="primary"):
+                        st.session_state.cart = []
+                        st.session_state.gen_pdf_bytes = None
+                        st.session_state.gen_excel_bytes = None
+                        st.rerun()
             else: st.info("Cart Empty")
 
         with tab3:
@@ -810,3 +826,4 @@ try:
 
 except Exception as e:
     st.error(f"🚨 CRITICAL ERROR: {e}")
+    
