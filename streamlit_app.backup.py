@@ -75,17 +75,24 @@ try:
     def create_safe_id(text):
         return "".join(c for c in str(text).replace(' ', '-').lower() if c.isalnum() or c == '-').replace('--', '-')
 
-    def clean_key(text):
+    def clean_path_key(text):
+        """
+        Creates a normalized key string from a path or name.
+        Removes spaces, special chars, and lowercases everything.
+        Retains directory structure implication by processing the whole string.
+        """
         if not isinstance(text, str): return ""
         text = text.lower().strip()
-        # Remove extensions
+        # Remove common image extensions
         for ext in ['.jpg', '.jpeg', '.png', '.webp']:
             if text.endswith(ext): text = text[:-len(ext)]
         
-        # Remove separators
-        text = text.replace(' ', '').replace('_', '').replace('-', '')
+        # Remove special characters but keep structure mostly intact for matching
+        # We remove slashes here to make a continuous string for comparison
+        # e.g. "Folder/Sub/Item" -> "foldersubitem"
+        text = text.replace('/', '').replace('\\', '').replace(' ', '').replace('_', '').replace('-', '')
         
-        # Remove stop words that might confuse matching
+        # Remove stop words
         for stop_word in ['catalogue', 'image', 'images', 'product', 'products', 'img']:
             text = text.replace(stop_word, '')
         return text
@@ -180,15 +187,15 @@ try:
         except Exception as e:
             st.error(f"Failed to save template: {e}")
 
-    # --- 8. DATA LOADING (IMPROVED SMART MATCHING) ---
+    # --- 8. DATA LOADING (STRICT PATH MATCHING) ---
     @st.cache_data(show_spinner="Syncing Data from Cloud & GitHub...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # 1. Cloudinary Retrieval (Smart Map)
-        # We store tuples of (cleaned_filename, cleaned_fullpath, url)
-        cloudinary_assets = [] 
+        # 1. Cloudinary Retrieval (Strict Path Map)
+        # Key = Normalized Full Path (Catalogue/Category/ItemName)
+        cloudinary_map = {} 
         try:
             resources = []
             next_cursor = None
@@ -201,20 +208,15 @@ try:
                     break
             
             for asset in resources:
-                full_path = asset["public_id"] 
-                filename = full_path.split('/')[-1] # Extract just the file name
-                
-                # We store both clean versions to match against
-                cloudinary_assets.append({
-                    "clean_filename": clean_key(filename),
-                    "clean_fullpath": clean_key(full_path),
-                    "url": asset["secure_url"]
-                })
+                # Store the FULL public_id as the key, cleaned.
+                # public_id example: "Sacred Elements Catalogue/Smudge Balls/Smudge Organic Bomb - Palo santo"
+                full_key = clean_path_key(asset["public_id"])
+                cloudinary_map[full_key] = asset["secure_url"]
                 
         except Exception as e: 
             print(f"Cloudinary Sync Warning: {e}")
 
-        # 2. Check Admin Database
+        # 2. Check Admin Database (Skipped logic for brevity, keeping standard flow)
         DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
         IMAGE_DIR = os.path.join(BASE_DIR, "images")
         data_loaded_from_db = False
@@ -232,7 +234,7 @@ try:
                     df["ImageB64"] = "" 
                     df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
                     
-                    # (Admin DB Logic abbreviated, uses local files usually)
+                    # Local fallback logic
                     for index, row in df.iterrows():
                          sku = str(row.get('SKU Code', '')).strip()
                          local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
@@ -266,43 +268,31 @@ try:
                     for col in required_output_cols:
                         if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
 
-                    if cloudinary_assets:
+                    if cloudinary_map:
                         for index, row in df.iterrows():
-                            # Clean the Item Name from Excel
-                            item_key = clean_key(row['ItemName'])
-                            found_url = None
+                            # --- STRICT PATH CONSTRUCTION ---
+                            # We build the expected path exactly how it appears in Cloudinary folder structure
+                            # Path: "Catalogue Name/Category Name/Item Name"
                             
-                            # --- SMART MATCHING LOGIC ---
-                            # 1. Exact Filename Match (Best)
-                            for asset in cloudinary_assets:
-                                if asset["clean_filename"] == item_key:
-                                    found_url = asset["url"]
-                                    break
+                            cat_name = row['Catalogue']
+                            category_name = row['Category']
+                            item_name = row['ItemName']
                             
-                            # 2. Substring Match (If Exact failed)
-                            # e.g. Excel: "Smudge Organic" matches Cloudinary: "Smudge Organic Bomb"
-                            if not found_url:
-                                for asset in cloudinary_assets:
-                                    if item_key in asset["clean_filename"] or asset["clean_filename"] in item_key:
-                                        found_url = asset["url"]
-                                        break
-                                        
-                            # 3. Fuzzy Match (Last Resort)
-                            if not found_url:
-                                best_score = 0
-                                for asset in cloudinary_assets:
-                                    # Compare against filename primarily
-                                    score = fuzz.token_sort_ratio(item_key, asset["clean_filename"])
-                                    if score > best_score:
-                                        best_score = score
-                                        found_url = asset["url"]
-                                if best_score < 70: found_url = None
-
+                            # Build the full path string
+                            expected_path = f"{cat_name}/{category_name}/{item_name}"
+                            
+                            # Clean it using the SAME function used for Cloudinary keys
+                            search_key = clean_path_key(expected_path)
+                            
+                            # Exact Lookup
+                            found_url = cloudinary_map.get(search_key)
+                            
                             if found_url:
-                                # f_auto helps Cloudinary serve the best format
                                 optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto,f_auto/")
                                 df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
-                    
+                            # else:
+                            #    print(f"Image Not Found for path: {expected_path} (Key: {search_key})")
+
                     all_data.append(df[required_output_cols])
                 except Exception as e: 
                     st.error(f"Error reading {catalogue_name}: {e}")
@@ -739,7 +729,7 @@ try:
                 
                 c1, c2 = st.columns(2)
                 with c1:
-                    if st.button("Remove Selected Items"):
+                    if st.button("Update Cart (Remove Selected)"):
                         pids_to_rem = cart_df.loc[edited[edited['Remove']].index, 'ProductID'].tolist()
                         remove_from_cart(pids_to_rem)
                         st.rerun()
@@ -826,4 +816,3 @@ try:
 
 except Exception as e:
     st.error(f"🚨 CRITICAL ERROR: {e}")
-    
