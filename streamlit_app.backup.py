@@ -75,26 +75,20 @@ try:
     def create_safe_id(text):
         return "".join(c for c in str(text).replace(' ', '-').lower() if c.isalnum() or c == '-').replace('--', '-')
 
-    def clean_path_key(text):
+    def normalize_key(text):
         """
-        Creates a normalized key string from a path or name.
-        Removes spaces, special chars, and lowercases everything.
-        Retains directory structure implication by processing the whole string.
+        Simple, safe normalization.
+        Removes spaces, casing, and extensions.
+        Does NOT remove words like 'catalogue' or 'product'.
         """
         if not isinstance(text, str): return ""
         text = text.lower().strip()
-        # Remove common image extensions
+        # Remove extensions
         for ext in ['.jpg', '.jpeg', '.png', '.webp']:
             if text.endswith(ext): text = text[:-len(ext)]
         
-        # Remove special characters but keep structure mostly intact for matching
-        # We remove slashes here to make a continuous string for comparison
-        # e.g. "Folder/Sub/Item" -> "foldersubitem"
-        text = text.replace('/', '').replace('\\', '').replace(' ', '').replace('_', '').replace('-', '')
-        
-        # Remove stop words
-        for stop_word in ['catalogue', 'image', 'images', 'product', 'products', 'img']:
-            text = text.replace(stop_word, '')
+        # Remove only separators, keep the words intact
+        text = text.replace(' ', '').replace('_', '').replace('-', '')
         return text
 
     def force_light_theme_setup():
@@ -187,15 +181,16 @@ try:
         except Exception as e:
             st.error(f"Failed to save template: {e}")
 
-    # --- 8. DATA LOADING (STRICT PATH MATCHING) ---
+    # --- 8. DATA LOADING (FOLDER-AWARE MATCHING) ---
     @st.cache_data(show_spinner="Syncing Data from Cloud & GitHub...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # 1. Cloudinary Retrieval (Strict Path Map)
-        # Key = Normalized Full Path (Catalogue/Category/ItemName)
-        cloudinary_map = {} 
+        # 1. Cloudinary Retrieval (Indexed by Folder)
+        # Structure: folder_map = { "folder_key": { "item_key": "url" } }
+        folder_map = {}
+        
         try:
             resources = []
             next_cursor = None
@@ -208,15 +203,28 @@ try:
                     break
             
             for asset in resources:
-                # Store the FULL public_id as the key, cleaned.
-                # public_id example: "Sacred Elements Catalogue/Smudge Balls/Smudge Organic Bomb - Palo santo"
-                full_key = clean_path_key(asset["public_id"])
-                cloudinary_map[full_key] = asset["secure_url"]
+                # asset["public_id"] -> "CatalogueName/CategoryName/ItemName"
+                # Split path
+                parts = asset["public_id"].split('/')
+                if len(parts) >= 2:
+                    # Item is the last part
+                    filename = parts[-1]
+                    # Folder is everything before
+                    folder_path = "/".join(parts[:-1])
+                    
+                    f_key = normalize_key(folder_path)
+                    i_key = normalize_key(filename)
+                    
+                    if f_key not in folder_map:
+                        folder_map[f_key] = {}
+                    
+                    # Store URL mapped by item name inside that folder
+                    folder_map[f_key][i_key] = asset["secure_url"]
                 
         except Exception as e: 
             print(f"Cloudinary Sync Warning: {e}")
 
-        # 2. Check Admin Database (Skipped logic for brevity, keeping standard flow)
+        # 2. Check Admin Database
         DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
         IMAGE_DIR = os.path.join(BASE_DIR, "images")
         data_loaded_from_db = False
@@ -234,7 +242,6 @@ try:
                     df["ImageB64"] = "" 
                     df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
                     
-                    # Local fallback logic
                     for index, row in df.iterrows():
                          sku = str(row.get('SKU Code', '')).strip()
                          local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
@@ -268,30 +275,40 @@ try:
                     for col in required_output_cols:
                         if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
 
-                    if cloudinary_map:
+                    if folder_map:
                         for index, row in df.iterrows():
-                            # --- STRICT PATH CONSTRUCTION ---
-                            # We build the expected path exactly how it appears in Cloudinary folder structure
-                            # Path: "Catalogue Name/Category Name/Item Name"
-                            
+                            # 1. Determine the expected folder
+                            # We assume structure: "Catalogue Name / Category Name"
+                            # If your Cloudinary structure is just "Category Name", remove 'cat_name' below.
+                            # Based on your prompt: "upload the exact name of catalogue in the exact name of category"
                             cat_name = row['Catalogue']
                             category_name = row['Category']
-                            item_name = row['ItemName']
                             
-                            # Build the full path string
-                            expected_path = f"{cat_name}/{category_name}/{item_name}"
+                            # Normalize folder path: "Catalogue/Category"
+                            target_folder_key = normalize_key(f"{cat_name}/{category_name}")
                             
-                            # Clean it using the SAME function used for Cloudinary keys
-                            search_key = clean_path_key(expected_path)
-                            
-                            # Exact Lookup
-                            found_url = cloudinary_map.get(search_key)
+                            # 2. Look for that folder
+                            found_url = None
+                            if target_folder_key in folder_map:
+                                # Folder found! Now look for item.
+                                item_key = normalize_key(row['ItemName'])
+                                folder_contents = folder_map[target_folder_key]
+                                
+                                # A. Exact Match
+                                if item_key in folder_contents:
+                                    found_url = folder_contents[item_key]
+                                else:
+                                    # B. Fallback: Check if Item Key is IN the file key (e.g. "Palo Santo" vs "Palo Santo.jpg")
+                                    # Since normalize_key strips extensions, exact match usually covers it.
+                                    # But let's handle "Item Name - Suffix" variations
+                                    for f_item, url in folder_contents.items():
+                                        if item_key in f_item or f_item in item_key:
+                                            found_url = url
+                                            break
                             
                             if found_url:
                                 optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto,f_auto/")
                                 df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
-                            # else:
-                            #    print(f"Image Not Found for path: {expected_path} (Key: {search_key})")
 
                     all_data.append(df[required_output_cols])
                 except Exception as e: 
@@ -729,7 +746,7 @@ try:
                 
                 c1, c2 = st.columns(2)
                 with c1:
-                    if st.button("Update Cart (Remove Selected)"):
+                    if st.button("Remove Selected Items"):
                         pids_to_rem = cart_df.loc[edited[edited['Remove']].index, 'ProductID'].tolist()
                         remove_from_cart(pids_to_rem)
                         st.rerun()
