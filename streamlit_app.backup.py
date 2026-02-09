@@ -16,7 +16,7 @@ try:
     import time
     import uuid
     import difflib
-    from fuzzywuzzy import fuzz
+    from fuzzywuzzy import fuzz 
     from PIL import Image
     import platform
     import subprocess
@@ -42,6 +42,22 @@ try:
     )
 
     # --- 3. HELPER FUNCTIONS ---
+    
+    # --- CRITICAL FIX: ROBUST KEY CLEANER ---
+    def clean_key(text):
+        if not isinstance(text, str): return ""
+        text = text.lower().strip()
+        
+        # 1. Remove Extensions (Critical for .webp/.png matching)
+        for ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff']:
+            if text.endswith(ext):
+                text = text[:-len(ext)]
+                
+        # 2. Remove Special Characters, Spaces, and Invisible Excel Junk
+        text = text.replace('\u00a0', '').replace(' ', '').replace('_', '').replace('-', '').replace('/', '').replace('\\', '').replace('.', '')
+        
+        return text
+
     def get_image_as_base64_str(url_or_path, resize=None, max_size=None):
         if not url_or_path: return ""
         try:
@@ -74,13 +90,6 @@ try:
 
     def create_safe_id(text):
         return "".join(c for c in str(text).replace(' ', '-').lower() if c.isalnum() or c == '-').replace('--', '-')
-
-    def clean_key(text):
-        if not isinstance(text, str): return ""
-        text = text.lower().strip().replace(' ', '').replace('_', '').replace('-', '')
-        for stop_word in ['catalogue', 'image', 'images', 'product', 'products', 'img']:
-            text = text.replace(stop_word, '')
-        return text
 
     def force_light_theme_setup():
         config_dir = ".streamlit"
@@ -172,14 +181,19 @@ try:
         except Exception as e:
             st.error(f"Failed to save template: {e}")
 
-    # --- 8. DATA LOADING (FIXED & CONSOLIDATED) ---
-    @st.cache_data(show_spinner="Syncing Data...")
+    # --- 8. DATA LOADING ---
+    
+    # --- SMART DATA LOADER (Exact + Partial Matching) ---
+    @st.cache_data(show_spinner="Syncing Data (Smart Match v4)...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # A. Cloudinary Setup
+        # --- A. CLOUDINARY INDEXING ---
         cloudinary_map = {}
+        filename_map = {} # Maps "clean_filename" -> URL for partial matching
+        debug_log = ["--- SYNC START ---"]
+        
         try:
             cloudinary.api.ping()
             resources = []
@@ -191,106 +205,111 @@ try:
                 if not next_cursor: break
             
             for res in resources:
-                public_id = res['public_id'].split('/')[-1] 
-                c_key = clean_key(public_id)
-                cloudinary_map[c_key] = res['secure_url']
+                public_id = res['public_id']
+                url = res['secure_url']
+                
+                # 1. Full Path Key (e.g. "sacredelementcataloguewitchcraftwhitesage")
+                full_key = clean_key(public_id)
+                cloudinary_map[full_key] = url
+                
+                # 2. Filename Only Key (e.g. "whitesage")
+                f_name = public_id.split('/')[-1]
+                file_key = clean_key(f_name)
+                
+                # Store in filename map (Last One Wins if duplicates exist)
+                if file_key not in filename_map:
+                    filename_map[file_key] = url
+                
         except Exception as e:
             st.warning(f"⚠️ Cloudinary Warning: {e}")
-            cloudinary_map = {} 
 
-        # >>> B. CHECK ADMIN DATABASE FIRST <<<
-        DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
-        IMAGE_DIR = os.path.join(BASE_DIR, "images")
-        data_loaded_from_db = False
-
-        if os.path.exists(DB_PATH):
+        # --- B. EXCEL LOADING & MATCHING ---
+        for catalogue_name, excel_path in CATALOGUE_PATHS.items():
+            if not os.path.exists(excel_path): continue
             try:
-                with open(DB_PATH, 'r') as f: db_data = json.load(f)
+                df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
+                df = df.fillna("") 
+                df.columns = [str(c).strip() for c in df.columns]
+                df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
                 
-                if db_data.get("products"):
-                    df = pd.DataFrame(db_data["products"])
-                    df.rename(columns={"SKUCode": "SKU Code"}, inplace=True)
-                    for col in required_output_cols:
-                        if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
-                    
-                    df['Packaging'] = 'Default Packaging'
-                    df["ImageB64"] = "" 
-                    df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
-                    
+                df['Catalogue'] = catalogue_name
+                df['Packaging'] = 'Default Packaging'
+                df["ImageB64"] = "" 
+                df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
+                df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
+                
+                for col in required_output_cols:
+                    if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
+
+                if cloudinary_map:
                     for index, row in df.iterrows():
-                        sku = str(row.get('SKU Code', '')).strip()
-                        local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
+                        # CLEAN EXCEL KEYS
+                        cat = clean_key(str(row.get('Catalogue', '')))
+                        category = clean_key(str(row.get('Category', '')))
+                        item = clean_key(str(row.get('ItemName', ''))) # e.g. "bayleafhexa"
                         
-                        if os.path.exists(local_img_path):
-                             df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
-                        else:
-                            row_item_key = clean_key(row['ItemName'])
-                            if row_item_key in cloudinary_map:
-                                original_url = cloudinary_map[row_item_key]
-                                optimized_url = original_url.replace("/upload/", "/upload/w_800,q_auto/")
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
-                    
-                    return df[required_output_cols]
-            except Exception as e:
-                print(f"Admin DB Load Failed: {e}. Falling back to Excel.")
-                data_loaded_from_db = False
+                        found_url = None
+                        match_type = "None"
 
-        # C. Excel Fallback
-        if not data_loaded_from_db:
-            for catalogue_name, excel_path in CATALOGUE_PATHS.items():
-                if not os.path.exists(excel_path): continue
-                try:
-                    df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
-                    df = df.fillna("") 
-                    df.columns = [str(c).strip() for c in df.columns]
-                    df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
-                    df['Catalogue'] = catalogue_name; df['Packaging'] = 'Default Packaging'; df["ImageB64"] = ""; df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]; df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
-                    for col in required_output_cols:
-                        if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
+                        # CHECK 1: Full Folder Path Match (Most Strict)
+                        key_1 = cat + category + item
+                        
+                        # CHECK 2: Category + Item Path
+                        key_2 = category + item
 
-                    if cloudinary_map:
-                        for index, row in df.iterrows():
-                            row_item_key = clean_key(row['ItemName'])
-                            found_url = None
-                            if row_item_key in cloudinary_map: found_url = cloudinary_map[row_item_key]
-                            else:
-                                best_score = 0
-                                for cloud_key, url in cloudinary_map.items():
-                                    score = fuzz.token_sort_ratio(row_item_key, cloud_key)
-                                    if score > best_score:
-                                        best_score = score
-                                        found_url = url
-                                if best_score < 75: found_url = None
+                        # CHECK 3: Filename Exact Match
+                        key_3 = item
 
-                            if found_url:
-                                optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
-                    
-                    all_data.append(df[required_output_cols])
-                except Exception as e: st.error(f"Error reading Excel {catalogue_name}: {e}")
+                        if key_1 in cloudinary_map:
+                            found_url = cloudinary_map[key_1]
+                            match_type = "Exact Path"
+                        elif key_2 in cloudinary_map:
+                            found_url = cloudinary_map[key_2]
+                            match_type = "Category Path"
+                        elif key_3 in filename_map:
+                            found_url = filename_map[key_3]
+                            match_type = "Exact Filename"
 
-            if not all_data: return pd.DataFrame(columns=required_output_cols)
-            full_df = pd.concat(all_data, ignore_index=True)
-            return full_df
+                        # CHECK 4: Smart Partial Match (Fix for "Bayleaf Hexa" vs "Bayleaf")
+                        # We check if the EXCEL ITEM starts with the CLOUD FILENAME
+                        if not found_url:
+                            for c_key, c_url in filename_map.items():
+                                if len(c_key) < 4: continue # Skip tiny keys
+                                
+                                # Case A: Excel "Bayleaf Hexa" starts with Cloud "Bayleaf" -> MATCH
+                                if item.startswith(c_key):
+                                    found_url = c_url
+                                    match_type = f"Partial: Item starts with '{c_key}'"
+                                    break
+                                
+                                # Case B: Cloud "Soham...Webp" starts with Excel "Soham..." -> MATCH
+                                if c_key.startswith(item):
+                                    found_url = c_url
+                                    match_type = f"Partial: File starts with '{item}'"
+                                    break
+                        
+                        # Debug Logic
+                        if "soham" in item or "bayleaf" in item:
+                            debug_log.append(f"Product: {row.get('ItemName')} | Found: {found_url is not None} | Type: {match_type}")
+
+                        # Assign Image
+                        if found_url:
+                            optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
+                            df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
+
+                all_data.append(df[required_output_cols])
+            except Exception as e: st.error(f"Error reading Excel {catalogue_name}: {e}")
+
+        # Save logs for sidebar
+        st.session_state['debug_logs'] = debug_log
+
+        if not all_data: return pd.DataFrame(columns=required_output_cols)
+        return pd.concat(all_data, ignore_index=True)
 
     # --- 10. PDF GENERATOR ---
-    PRODUCT_CARD_TEMPLATE = """
-    <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;">
-        <div style="font-family: sans-serif; font-size: 8pt; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            {category_name}
-        </div>
-        <div style="height: 110px; display: table-cell; vertical-align: middle; text-align: center; width: 100%; overflow: hidden; margin-bottom: 5px; background-color: white; padding: 2px; position: relative;">
-            {new_badge_html}
-            {image_html}
-        </div>
-        <div style="text-align: center; padding: 0; height: 40px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-            <h4 style="margin: 0; font-size: {font_size}; color: #000; line-height: 1.1; font-weight: bold; font-family: serif; word-wrap: break-word; max-height: 100%;">
-                <span style="color: #007bff; margin-right: 4px;">{ref_no}.</span>{item_name}
-            </h4>
-        </div>
-    </div>
-    """
-
+    
+    # [HELPER FUNCTIONS GLOBAL TO FIX NAME ERROR]
+    
     def generate_story_html(story_img_1_b64):
         text_block_1 = """HEM Corporation is amongst top global leaders in the manufacturing and export of perfumed agarbattis. For over three decades now we have been parceling out high-quality masala sticks, agarbattis, dhoops, and cones to our customers in more than 70 countries. We are known and established for our superior quality products.<br><br>HEM has been showered with love and accolades all across the globe for its diverse range of products. This makes us the most preferred brand the world over. HEM has been awarded as the ‘Top Exporters’ brand, for incense sticks by the ‘Export Promotion Council for Handicraft’ (EPCH) for three consecutive years from 2008 till 2011.<br><br>We have also been awarded “Niryat Shree” (Export) Silver Trophy in the Handicraft category by ‘Federation of Indian Export Organization’ (FIEO). The award was presented to us by the then Honourable President of India, late Shri Pranab Mukherjee."""
         text_journey_1 = """From a brand that was founded by three brothers in 1983, HEM Fragrances has come a long way. HEM started as a simple incense store offering products like masala agarbatti, thuribles, incense burner and dhoops. However, with time, there was a huge evolution in the world of fragrances much that the customers' needs also started changing. HEM incense can be experienced not only to provide you with rich aromatic experience but also create a perfect ambience for your daily prayers, meditation, and yoga.<br><br>The concept of aromatherapy massage, burning incense sticks and incense herbs for spiritual practices, using aromatherapy diffuser oils to promote healing and relaxation or using palo santo incense to purify and cleanse a space became popular around the world.<br><br>So, while we remained focused on creating our signature line of products, especially the ‘HEM Precious’ range which is a premium flagship collection, there was a dire need to expand our portfolio to meet increasing customer demands."""
@@ -427,8 +446,7 @@ try:
 
         toc_html += """</div>"""
         return toc_html
-        
-    # --- UPDATED PDF GENERATOR (Fixes Index Placement & Order) ---
+
     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         # --- HELPER: Load images robustly ---
         def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
@@ -455,7 +473,7 @@ try:
 
         watermark_b64 = load_img_robust("watermark.png", resize=False)
 
-        # --- CSS STYLING (The Fix is Here) ---
+        # --- CSS STYLING (Absolute Centering Fix) ---
         CSS_STYLES = f"""
             <!DOCTYPE html>
             <html><head><meta charset="UTF-8">
@@ -572,11 +590,11 @@ try:
         # 1. Cover Page
         html_parts.append(f"""<div class="cover-page"><div class="cover-image-container"><img src="data:image/png;base64,{cover_bg_b64}"></div></div>""")
         
-        # 2. Table of Contents
-        html_parts.append(generate_table_of_contents_html(df_sorted))
-        
-        # 3. Story Page
+        # 2. Story Page (ORDER CHANGED: Story BEFORE Index)
         html_parts.append(generate_story_html(story_img_1_b64))
+
+        # 3. Table of Contents
+        html_parts.append(generate_table_of_contents_html(df_sorted))
         
         # 4. Products
         html_parts.append('<div class="catalogue-content clearfix">')
@@ -687,7 +705,7 @@ try:
         html_parts.append('<div style="clear: both;"></div></div></body></html>')
         
         return "".join(html_parts)
-        
+
     def generate_excel_file(df_sorted, customer_name, case_selection_map):
         output = io.BytesIO()
         excel_rows = []
@@ -855,6 +873,12 @@ try:
                         st.toast(f"Template '{sel_temp}' loaded!", icon="✅")
                         st.rerun()
             
+            # Display Debug Logs
+            with st.expander("🛠️ Image Sync Debugger", expanded=False):
+                if 'debug_logs' in st.session_state:
+                    for line in st.session_state['debug_logs']:
+                        st.text(line)
+
             st.markdown("---")
             st.markdown("### 🔄 Data Sync")
             if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file.", use_container_width=True):
@@ -1067,14 +1091,4 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
-
-
-
-
-
-
-
-
-
-
-
+        
