@@ -182,15 +182,28 @@ try:
             st.error(f"Failed to save template: {e}")
 
     # --- 8. DATA LOADING (FIXED & CONSOLIDATED) ---
-    @st.cache_data(show_spinner="Syncing Data...")
-    def load_data_cached(_dummy_timestamp):
+    # --- 1. NEW CLEAN KEY (Robust) ---
+    def clean_key(text):
+        if not isinstance(text, str): return ""
+        text = text.lower().strip()
+        # Remove Extensions
+        for ext in ['.jpg', '.jpeg', '.png', '.webp']:
+            if text.endswith(ext): text = text[:-len(ext)]
+        # Remove Junk (including Excel non-breaking spaces)
+        return text.replace('\u00a0', '').replace(' ', '').replace('_', '').replace('-', '').replace('/', '').replace('\\', '').replace('.', '')
+
+    # --- 2. NEW DATA LOADER V2 (Forces Cache Reset) ---
+    @st.cache_data(show_spinner="Syncing Data V2...")
+    def load_data_v2(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # --- 1. CLOUDINARY INDEXING ---
-        cloudinary_map = {}
-        # We store keys in a list to allow "startswith" searching later
-        cloud_keys_list = [] 
+        # DEBUG LOGS
+        debug_log = ["--- STARTING SYNC V2 ---"]
+        
+        # A. CLOUDINARY INDEXING
+        cloudinary_map = {} # Stores Full Path -> URL
+        filename_map = {}   # Stores Filename -> URL
         
         try:
             cloudinary.api.ping()
@@ -206,25 +219,25 @@ try:
                 public_id = res['public_id']
                 url = res['secure_url']
                 
-                # Clean the full path (e.g. "poojaoilcataloguecupdhoopsohamsambranicupdhoop")
+                # 1. Full Path Key
+                # e.g. "poojaoilcataloguecupdhoopsohamsambranicupdhoop"
                 full_key = clean_key(public_id)
                 cloudinary_map[full_key] = url
                 
-                # Clean just the filename (e.g. "sohamsambranicupdhoop")
-                filename = public_id.split('/')[-1]
-                file_key = clean_key(filename)
+                # 2. Filename Key
+                # e.g. "sohamsambranicupdhoop"
+                f_name = public_id.split('/')[-1]
+                file_key = clean_key(f_name)
+                filename_map[file_key] = url
                 
-                # Store if not exists (Full path takes priority usually, but we save both)
-                if file_key not in cloudinary_map:
-                    cloudinary_map[file_key] = url
-                
-                # Add to list for partial matching
-                cloud_keys_list.append((file_key, url))
-                
+                # Debug specific items
+                if "bayleaf" in file_key or "soham" in file_key:
+                    debug_log.append(f"☁️ FOUND in Cloud: {file_key} | Path: {public_id}")
+
         except Exception as e:
             st.warning(f"⚠️ Cloudinary Warning: {e}")
 
-        # --- 2. EXCEL LOADING ---
+        # B. EXCEL LOADING
         for catalogue_name, excel_path in CATALOGUE_PATHS.items():
             if not os.path.exists(excel_path): continue
             try:
@@ -233,60 +246,76 @@ try:
                 df.columns = [str(c).strip() for c in df.columns]
                 df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
                 
-                # Setup Columns
                 df['Catalogue'] = catalogue_name
                 df['Packaging'] = 'Default Packaging'
                 df["ImageB64"] = "" 
                 df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
                 df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
-                
                 for col in required_output_cols:
                     if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
 
-                # --- 3. SMART IMAGE MATCHING ---
+                # C. MATCHING LOGIC
                 if cloudinary_map:
                     for index, row in df.iterrows():
-                        # Get Cleaned Excel Data
-                        cat = clean_key(str(row.get('Catalogue', '')))
-                        category = clean_key(str(row.get('Category', '')))
-                        item = clean_key(str(row.get('ItemName', '')))
+                        # Clean Excel Data
+                        cat_raw = str(row.get('Catalogue', ''))
+                        cat = clean_key(cat_raw)
+                        
+                        category_raw = str(row.get('Category', ''))
+                        category = clean_key(category_raw)
+                        
+                        item_raw = str(row.get('ItemName', ''))
+                        item = clean_key(item_raw)
                         
                         found_url = None
+                        match_method = "None"
 
-                        # STRATEGY A: EXACT MATCHES (Best)
-                        # 1. Full Path: Catalogue + Category + Item
-                        key_1 = cat + category + item
-                        # 2. Category + Item
-                        key_2 = category + item
-                        # 3. Item Only
-                        key_3 = item
+                        # 1. Exact Full Path Match
+                        # "poojaoilcatalogue" + "cupdhoop" + "soham..."
+                        key_full = cat + category + item
+                        if key_full in cloudinary_map:
+                            found_url = cloudinary_map[key_full]
+                            match_method = "Full Path"
                         
-                        if key_1 in cloudinary_map: found_url = cloudinary_map[key_1]
-                        elif key_2 in cloudinary_map: found_url = cloudinary_map[key_2]
-                        elif key_3 in cloudinary_map: found_url = cloudinary_map[key_3]
-                        
-                        # STRATEGY B: PARTIAL MATCH (Fixes "Bayleaf Hexa" vs "Bayleaf")
+                        # 2. Category + Item Match
+                        elif (category + item) in cloudinary_map:
+                            found_url = cloudinary_map[category + item]
+                            match_method = "Cat+Item"
+
+                        # 3. Filename Match
+                        elif item in filename_map:
+                            found_url = filename_map[item]
+                            match_method = "Filename Exact"
+
+                        # 4. Partial Match (Fix for "Bayleaf Hexa" vs "Bayleaf")
                         if not found_url:
-                            # We check if the ITEM KEY starts with a cloud filename
-                            # e.g. Excel="bayleafhexa", Cloud="bayleaf" -> MATCH
-                            for c_key, c_url in cloud_keys_list:
-                                if len(c_key) > 3: # Ignore tiny keys
-                                    if item.startswith(c_key):
-                                        found_url = c_url
-                                        break
-                                    # Reverse: Excel="bayleaf", Cloud="bayleafimage"
-                                    if c_key.startswith(item):
-                                        found_url = c_url
-                                        break
-
-                        # Save Image
+                            for f_key, f_url in filename_map.items():
+                                if len(f_key) < 4: continue # Skip tiny keys
+                                # Check if Excel Item STARTS with Cloud Filename
+                                # e.g. "bayleafhexa".startswith("bayleaf") -> True
+                                if item.startswith(f_key):
+                                    found_url = f_url
+                                    match_method = f"Partial (Item starts with {f_key})"
+                                    break
+                        
+                        # Apply Image
                         if found_url:
                             optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
                             df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
 
+                        # Debug Logic
+                        if "Bayleaf" in item_raw or "Soham" in item_raw:
+                            debug_log.append(f"🔍 CHECKING Excel Item: '{item_raw}' (Key: {item})")
+                            debug_log.append(f"   -> Result: {match_method}")
+                            if not found_url:
+                                debug_log.append(f"   -> FAILED. Tried Full Key: {key_full}")
+
                 all_data.append(df[required_output_cols])
             except Exception as e: st.error(f"Error reading Excel {catalogue_name}: {e}")
 
+        # Save logs to session state to display in sidebar
+        st.session_state['debug_logs'] = debug_log
+        
         if not all_data: return pd.DataFrame(columns=required_output_cols)
         return pd.concat(all_data, ignore_index=True)
 
@@ -1084,6 +1113,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
