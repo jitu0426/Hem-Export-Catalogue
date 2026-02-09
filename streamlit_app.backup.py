@@ -77,9 +77,19 @@ try:
 
     def clean_key(text):
         if not isinstance(text, str): return ""
+        # 1. Standard cleanup
         text = text.lower().strip().replace(' ', '').replace('_', '').replace('-', '')
-        for stop_word in ['catalogue', 'image', 'images', 'product', 'products', 'img']:
-            text = text.replace(stop_word, '')
+        
+        # 2. EXPANDED STOP WORDS: Remove Brand/Folder noise
+        # Added 'witchcraft' just in case, but 'sacred'/'elements' are the most important.
+        stop_words = [
+            'catalogue', 'image', 'images', 'product', 'products', 'img', 
+            'sacred', 'elements', 'element', 'hem', 'se', 'incense', 'sticks'
+        ]
+        
+        for word in stop_words:
+            text = text.replace(word, '')
+            
         return text
 
     def force_light_theme_setup():
@@ -191,9 +201,18 @@ try:
                 if not next_cursor: break
             
             for res in resources:
-                public_id = res['public_id'].split('/')[-1] 
-                c_key = clean_key(public_id)
-                cloudinary_map[c_key] = res['secure_url']
+                # --- CRITICAL FIX: DUAL INDEXING ---
+                # 1. Index the FULL PATH (e.g., "sacredelementswitchcraftwhitesage")
+                full_path_key = clean_key(res['public_id'])
+                cloudinary_map[full_path_key] = res['secure_url']
+
+                # 2. Index just the FILENAME (e.g., "whitesage")
+                # This ensures "White Sage" matches "White Sage.jpg" ignoring the folder!
+                filename_only = res['public_id'].split('/')[-1]
+                filename_key = clean_key(filename_only)
+                cloudinary_map[filename_key] = res['secure_url']
+                # -----------------------------------
+
         except Exception as e:
             st.warning(f"⚠️ Cloudinary Warning: {e}")
             cloudinary_map = {} 
@@ -250,17 +269,23 @@ try:
 
                     if cloudinary_map:
                         for index, row in df.iterrows():
+                            # Clean the Excel Name (e.g. "White Sage" -> "whitesage")
                             row_item_key = clean_key(row['ItemName'])
                             found_url = None
+                            
+                            # 1. Exact Match Check (Will match the Filename Key we created!)
                             if row_item_key in cloudinary_map: found_url = cloudinary_map[row_item_key]
                             else:
+                                # 2. Fuzzy Match Check
                                 best_score = 0
                                 for cloud_key, url in cloudinary_map.items():
                                     score = fuzz.token_sort_ratio(row_item_key, cloud_key)
                                     if score > best_score:
                                         best_score = score
                                         found_url = url
-                                if best_score < 75: found_url = None
+                                
+                                # Lowered threshold slightly to catch small typos
+                                if best_score < 70: found_url = None
 
                             if found_url:
                                 optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
@@ -1067,6 +1092,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
