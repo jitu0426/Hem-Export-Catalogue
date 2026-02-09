@@ -42,6 +42,24 @@ try:
     )
 
     # --- 3. HELPER FUNCTIONS ---
+    
+    # --- CRITICAL FIX: ROBUST KEY CLEANER ---
+    # This ensures "Soham...webp" matches "Soham..." and "White Sage" matches "White_Sage"
+    def clean_key(text):
+        if not isinstance(text, str): return ""
+        text = text.lower().strip()
+        
+        # 1. Remove Extensions (Critical for .webp/.png matching)
+        for ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff']:
+            if text.endswith(ext):
+                text = text[:-len(ext)]
+                
+        # 2. Remove Special Characters, Spaces, and Invisible Excel Junk
+        # We remove '.' last to ensure extensions were handled properly first
+        text = text.replace('\u00a0', '').replace(' ', '').replace('_', '').replace('-', '').replace('/', '').replace('\\', '').replace('.', '')
+        
+        return text
+
     def get_image_as_base64_str(url_or_path, resize=None, max_size=None):
         if not url_or_path: return ""
         try:
@@ -74,22 +92,6 @@ try:
 
     def create_safe_id(text):
         return "".join(c for c in str(text).replace(' ', '-').lower() if c.isalnum() or c == '-').replace('--', '-')
-
-    def clean_key(text):
-        if not isinstance(text, str): return ""
-        # 1. Lowercase
-        text = text.lower().strip()
-        
-        # 2. REMOVE EXTENSIONS (Common ones) - Critical for .webp/.jpg matching
-        for ext in ['.jpg', '.jpeg', '.png', '.webp']:
-            if text.endswith(ext):
-                text = text[:-len(ext)]
-                
-        # 3. REMOVE JUNK & INVISIBLE CHARACTERS
-        # \u00a0 is a non-breaking space common in Excel that BREAKS matches.
-        text = text.replace('\u00a0', '').replace(' ', '').replace('_', '').replace('-', '').replace('/', '').replace('\\', '').replace('.', '')
-        
-        return text
 
     def force_light_theme_setup():
         config_dir = ".streamlit"
@@ -180,27 +182,10 @@ try:
             st.toast(f"Template '{name}' saved!", icon="💾")
         except Exception as e:
             st.error(f"Failed to save template: {e}")
-# --- 1. ROBUST CLEAN KEY (Removes Extensions & Junk) ---
-    def clean_key(text):
-        if not isinstance(text, str): return ""
-        text = text.lower().strip()
-        
-        # A. Remove File Extensions (Critical for .webp/.png matching)
-        for ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff']:
-            if text.endswith(ext):
-                text = text[:-len(ext)]
-                
-        # B. Remove Special Characters & Spaces
-        # This ensures "White Sage" matches "White_Sage"
-        text = text.replace(' ', '').replace('_', '').replace('-', '').replace('.', '').replace('/', '').replace('\\', '')
-        
-        # C. Remove Excel Invisible Junk (Non-breaking space)
-        text = text.replace('\xa0', '')
-        
-        return text
 
-    # --- 2. SMART DATA LOADER (Exact + Partial Matching) ---
-    @st.cache_data(show_spinner="Syncing Data (Smart Match)...")
+    # --- 8. DATA LOADING (FIXED & CONSOLIDATED) ---
+    # --- SMART DATA LOADER (Exact + Partial Matching) ---
+    @st.cache_data(show_spinner="Syncing Data (Smart Match v3)...")
     def load_data_cached(_dummy_timestamp):
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
@@ -208,6 +193,7 @@ try:
         # --- A. CLOUDINARY INDEXING ---
         cloudinary_map = {}
         filename_map = {} # Maps "clean_filename" -> URL for partial matching
+        debug_log = ["--- SYNC START ---"]
         
         try:
             cloudinary.api.ping()
@@ -239,9 +225,6 @@ try:
             st.warning(f"⚠️ Cloudinary Warning: {e}")
 
         # --- B. EXCEL LOADING & MATCHING ---
-        # Debug Log to Sidebar
-        debug_log = ["--- SYNC LOGS ---"]
-        
         for catalogue_name, excel_path in CATALOGUE_PATHS.items():
             if not os.path.exists(excel_path): continue
             try:
@@ -292,7 +275,7 @@ try:
                         # We check if the EXCEL ITEM starts with the CLOUD FILENAME
                         if not found_url:
                             for c_key, c_url in filename_map.items():
-                                if len(c_key) < 4: continue # Skip tiny keys like 'img', '1', etc.
+                                if len(c_key) < 4: continue # Skip tiny keys
                                 
                                 # Case A: Excel "Bayleaf Hexa" starts with Cloud "Bayleaf" -> MATCH
                                 if item.startswith(c_key):
@@ -306,7 +289,7 @@ try:
                                     match_type = f"Partial: File starts with '{item}'"
                                     break
                         
-                        # Debug Logic for specific problem items
+                        # Debug Logic
                         if "soham" in item or "bayleaf" in item:
                             debug_log.append(f"Product: {row.get('ItemName')} | Found: {found_url is not None} | Type: {match_type}")
 
@@ -318,170 +301,14 @@ try:
                 all_data.append(df[required_output_cols])
             except Exception as e: st.error(f"Error reading Excel {catalogue_name}: {e}")
 
-        # Show logs in Sidebar
-        with st.sidebar:
-            with st.expander("🛠️ Image Sync Debugger", expanded=False):
-                for log in debug_log:
-                    st.text(log)
+        # Save logs for sidebar
+        st.session_state['debug_logs'] = debug_log
 
         if not all_data: return pd.DataFrame(columns=required_output_cols)
         return pd.concat(all_data, ignore_index=True)
+
     # --- 10. PDF GENERATOR ---
-    PRODUCT_CARD_TEMPLATE = """
-    <div class="product-card" style="width: 23%; float: left; margin: 10px 1%; padding: 5px; box-sizing: border-box; page-break-inside: avoid; background-color: #fcfcfc; border: 1px solid #E5C384; border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;">
-        <div style="font-family: sans-serif; font-size: 8pt; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            {category_name}
-        </div>
-        <div style="height: 110px; display: table-cell; vertical-align: middle; text-align: center; width: 100%; overflow: hidden; margin-bottom: 5px; background-color: white; padding: 2px; position: relative;">
-            {new_badge_html}
-            {image_html}
-        </div>
-        <div style="text-align: center; padding: 0; height: 40px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-            <h4 style="margin: 0; font-size: {font_size}; color: #000; line-height: 1.1; font-weight: bold; font-family: serif; word-wrap: break-word; max-height: 100%;">
-                <span style="color: #007bff; margin-right: 4px;">{ref_no}.</span>{item_name}
-            </h4>
-        </div>
-    </div>
-    """
-
-    def generate_story_html(story_img_1_b64):
-        text_block_1 = """HEM Corporation is amongst top global leaders in the manufacturing and export of perfumed agarbattis. For over three decades now we have been parceling out high-quality masala sticks, agarbattis, dhoops, and cones to our customers in more than 70 countries. We are known and established for our superior quality products.<br><br>HEM has been showered with love and accolades all across the globe for its diverse range of products. This makes us the most preferred brand the world over. HEM has been awarded as the ‘Top Exporters’ brand, for incense sticks by the ‘Export Promotion Council for Handicraft’ (EPCH) for three consecutive years from 2008 till 2011.<br><br>We have also been awarded “Niryat Shree” (Export) Silver Trophy in the Handicraft category by ‘Federation of Indian Export Organization’ (FIEO). The award was presented to us by the then Honourable President of India, late Shri Pranab Mukherjee."""
-        text_journey_1 = """From a brand that was founded by three brothers in 1983, HEM Fragrances has come a long way. HEM started as a simple incense store offering products like masala agarbatti, thuribles, incense burner and dhoops. However, with time, there was a huge evolution in the world of fragrances much that the customers' needs also started changing. HEM incense can be experienced not only to provide you with rich aromatic experience but also create a perfect ambience for your daily prayers, meditation, and yoga.<br><br>The concept of aromatherapy massage, burning incense sticks and incense herbs for spiritual practices, using aromatherapy diffuser oils to promote healing and relaxation or using palo santo incense to purify and cleanse a space became popular around the world.<br><br>So, while we remained focused on creating our signature line of products, especially the ‘HEM Precious’ range which is a premium flagship collection, there was a dire need to expand our portfolio to meet increasing customer demands."""
-        
-        img_tag = ""
-        if story_img_1_b64:
-            img_tag = f'<img src="data:image/jpeg;base64,{story_img_1_b64}" style="max-width: 100%; height: auto; border: 1px solid #eee;" alt="Awards Image">'
-        else:
-            img_tag = '<div style="border: 2px dashed red; padding: 20px; color: red;">JOURNEY IMAGE NOT FOUND</div>'
-
-        html = f"""
-        <div class="story-page" style="page-break-after: always; padding: 25px 50px; font-family: sans-serif; overflow: hidden; height: 260mm;">
-            <h1 style="text-align: center; color: #333; font-size: 28pt; margin-bottom: 20px;">Our Journey</h1>
-            <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: justify;">{text_block_1}</div>
-            <div style="margin-bottom: 30px; overflow: auto; clear: both;">
-                <div style="float: left; width: 50%; margin-right: 20px; font-size: 11pt; line-height: 1.6; text-align: justify;">{text_journey_1}</div>
-                <div style="float: right; width: 45%; text-align: center;">
-                    {img_tag}
-                </div>
-            </div>
-            <h2 style="text-align: center; font-size: 14pt; margin-top: 40px; clear: both;">Innovation, Creativity, Sustainability</h2>
-        </div>
-        """
-        return html
-
-    def generate_table_of_contents_html(df_sorted):
-        toc_html = """
-        <style>
-            .toc-title { text-align: center; font-family: serif; font-size: 32pt; color: #222; margin-bottom: 20px; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
-            
-            /* Catalogue Section Header in Index */
-            .toc-catalogue-section-header { 
-                background-color: #333; 
-                color: #ffffff; 
-                font-family: sans-serif; 
-                font-size: 16pt; 
-                padding: 12px; 
-                margin: 30px 0 15px 0; 
-                text-align: left; 
-                border-left: 8px solid #ff9800;
-                clear: both;
-                page-break-inside: avoid;
-            }
-
-            .index-grid-container { 
-                display: block; 
-                width: 100%; 
-                margin: 0 auto; 
-                font-size: 0; /* Fixes inline-block spacing issues */
-            }
-            
-            a.index-card-link { 
-                display: inline-block; 
-                width: 30%; 
-                margin: 1.5%; 
-                height: 200px; 
-                background-color: #fff; 
-                border-radius: 8px; 
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
-                text-decoration: none; 
-                overflow: hidden; 
-                border: 1px solid #e0e0e0; 
-                page-break-inside: avoid; 
-                vertical-align: top;
-            }
-            
-            .index-card-image { 
-                width: 100%; 
-                height: 160px; 
-                background-repeat: no-repeat; 
-                background-position: center center; 
-                background-size: contain; /* <--- This shows the full image */
-                background-color: #f9f9f9; 
-            }
-            
-            .index-card-label { 
-                height: 40px; 
-                background-color: #b30000; 
-                color: white; 
-                font-family: sans-serif; 
-                font-size: 9pt; 
-                font-weight: bold; 
-                display: block; 
-                line-height: 40px; 
-                text-align: center; 
-                text-transform: uppercase; 
-                letter-spacing: 0.5px; 
-                white-space: nowrap; 
-                overflow: hidden; 
-                text-overflow: ellipsis; 
-                padding: 0 10px; 
-            }
-            .clearfix::after { content: ""; clear: both; display: table; }
-        </style>
-        
-        <div id="main-index" class="toc-page" style="page-break-after: always; padding: 20px;">
-            <h1 class="toc-title">Table of Contents</h1>
-        """
-
-        # Get unique catalogues in the order they appear in the dataframe
-        catalogues = df_sorted['Catalogue'].unique()
-
-        for catalogue_name in catalogues:
-            # Add a header for the Catalogue
-            toc_html += f'<div class="toc-catalogue-section-header">{catalogue_name}</div>'
-            toc_html += '<div class="index-grid-container clearfix">'
-            
-            # Filter data for this specific catalogue
-            cat_df = df_sorted[df_sorted['Catalogue'] == catalogue_name]
-            unique_categories = cat_df['Category'].unique()
-
-            for category in unique_categories:
-                # Find representative image for this category within this catalogue
-                group = cat_df[cat_df['Category'] == category]
-                rep_image = "" 
-                for _, row in group.iterrows():
-                    img_str = row.get('ImageB64', '')
-                    if img_str and len(str(img_str)) > 100: 
-                        rep_image = img_str
-                        break 
-
-                bg_style = f"background-image: url('data:image/png;base64,{rep_image}');" if rep_image else "background-color: #eee;" 
-                safe_id = create_safe_id(category)
-                
-                toc_html += f"""
-                    <a href="#category-{safe_id}" class="index-card-link">
-                        <div class="index-card-image" style="{bg_style}"></div>
-                        <div class="index-card-label">{category}</div>
-                    </a>
-                """
-            
-            # Close grid container for this catalogue
-            toc_html += '</div><div style="clear: both;"></div>'
-
-        toc_html += """</div>"""
-        return toc_html
-        
-    # --- UPDATED PDF GENERATOR (Fixes Index Placement & Order) ---
+    # Using Absolute Centering to fix "Spouted/Compressed" images
     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         # --- HELPER: Load images robustly ---
         def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
@@ -740,7 +567,7 @@ try:
         html_parts.append('<div style="clear: both;"></div></div></body></html>')
         
         return "".join(html_parts)
-        
+
     def generate_excel_file(df_sorted, customer_name, case_selection_map):
         output = io.BytesIO()
         excel_rows = []
@@ -907,17 +734,13 @@ try:
                         st.session_state.cart = saved_templates[sel_temp]
                         st.toast(f"Template '{sel_temp}' loaded!", icon="✅")
                         st.rerun()
-            # REFRESH DATA LOGIC
-        # products_df = load_data_cached(st.session_state.data_timestamp)  <-- OLD
-        products_df = load_data_v2(st.session_state.data_timestamp)      # <-- NEW V2
-        
-        # Display Debug Logs in Sidebar
-        with st.sidebar:
-            with st.expander("🛠️ Image Sync Debugger", expanded=True):
+            
+            # Display Debug Logs
+            with st.expander("🛠️ Image Sync Debugger", expanded=False):
                 if 'debug_logs' in st.session_state:
                     for line in st.session_state['debug_logs']:
                         st.text(line)
-            
+
             st.markdown("---")
             st.markdown("### 🔄 Data Sync")
             if st.button("Refresh Cloudinary & Excel", help="Click if you uploaded new images or changed the Excel file.", use_container_width=True):
@@ -1130,20 +953,3 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
