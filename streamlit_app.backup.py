@@ -279,7 +279,7 @@ try:
         <div style="font-family: sans-serif; font-size: 8pt; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
             {category_name}
         </div>
-        <div style="height: 110px; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 5px; background-color: white; padding: 2px; position: relative;">
+        <div style="height: 110px; display: table-cell; vertical-align: middle; text-align: center; width: 100%; overflow: hidden; margin-bottom: 5px; background-color: white; padding: 2px; position: relative;">
             {new_badge_html}
             {image_html}
         </div>
@@ -1023,6 +1023,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
