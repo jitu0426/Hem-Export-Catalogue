@@ -427,6 +427,7 @@ try:
 
         toc_html += """</div>"""
         return toc_html
+        
     # --- UPDATED PDF GENERATOR (Fixes Index Placement & Order) ---
     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
         def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
@@ -521,8 +522,7 @@ try:
         # 1. Cover Page
         html_parts.append(f"""<div class="cover-page"><div class="cover-image-container"><img src="data:image/png;base64,{cover_bg_b64}"></div></div>""")
         
-        # 2. Table of Contents (NOW MOVED HERE - BEFORE STORY)
-        # Because df_sorted is already sorted by Excel Row order, the TOC will also be in that order.
+        # 2. Table of Contents
         html_parts.append(generate_table_of_contents_html(df_sorted))
         
         # 3. Story Page
@@ -559,6 +559,7 @@ try:
                 current_subcategory = None
                 safe_category_id = create_safe_id(current_category)
                 
+                # --- SAFE TRY/EXCEPT BLOCK ---
                 if current_category in case_selection_map:
                     try:
                         row_data = case_selection_map[current_category]
@@ -566,6 +567,7 @@ try:
                         row_data = {}
                 else:
                     row_data = {}
+                # -----------------------------
 
                 html_parts.append('<div class="category-block clearfix">') 
                 category_open = True
@@ -603,8 +605,10 @@ try:
 
             img_b64 = row["ImageB64"] 
             mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
-            # FIX: Added 'width: auto; height: auto; object-fit: contain;' to prevent stretching
-            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%; width: auto; height: auto; object-fit: contain; display: block; margin: 0 auto;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
+            
+            # --- FIX: Prevent Image Stretching ---
+            # 'width: auto; height: auto' prevents stretching. 'margin: 0 auto' centers it.
+            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%; width: auto; height: auto; display: block; margin: 0 auto;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
             
             packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
             sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
@@ -643,7 +647,7 @@ try:
         html_parts.append('<div style="clear: both;"></div></div></body></html>')
         
         return "".join(html_parts)
-
+        
     def generate_excel_file(df_sorted, customer_name, case_selection_map):
         output = io.BytesIO()
         excel_rows = []
@@ -1023,6 +1027,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
