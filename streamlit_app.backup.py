@@ -77,13 +77,9 @@ try:
 
     def clean_key(text):
         if not isinstance(text, str): return ""
-        # 1. Lowercase everything
-        text = text.lower().strip()
-        
-        # 2. REMOVE SEPARATORS: This makes "White Sage" == "White_Sage"
-        # We replace both space ' ' and underscore '_' with nothing.
-        text = text.replace(' ', '').replace('_', '').replace('-', '').replace('/', '').replace('\\', '')
-        
+        # STRICT CLEANING: Only lowercase and remove separators.
+        # We DO NOT remove words like "Catalogue" or "Sacred" anymore.
+        text = text.lower().strip().replace(' ', '').replace('_', '').replace('-', '').replace('/', '').replace('\\', '')
         return text
 
     def force_light_theme_setup():
@@ -182,8 +178,10 @@ try:
         all_data = []
         required_output_cols = ['Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'Catalogue', 'Packaging', 'ImageB64', 'ProductID', 'IsNew']
         
-        # A. Cloudinary Setup
+        # 1. Cloudinary Indexing
         cloudinary_map = {}
+        debug_log = [] # For debugging
+        
         try:
             cloudinary.api.ping()
             resources = []
@@ -195,110 +193,93 @@ try:
                 if not next_cursor: break
             
             for res in resources:
-                # Store the CLEANED public_id (which ignores _ vs space differences)
-                # Example Cloudinary: "Sacred_Elements/Witchcraft/White_Sage.jpg"
-                # Becomes Key: "sacredelementswitchcraftwhitesage"
-                full_key = clean_key(res['public_id'])
-                cloudinary_map[full_key] = res['secure_url']
-
+                public_id = res['public_id']
+                url = res['secure_url']
+                
+                # Index 1: Full Path (e.g. "sacredelementcataloguewitchcraftwhitesage")
+                full_key = clean_key(public_id)
+                cloudinary_map[full_key] = url
+                
+                # Index 2: Filename Only (e.g. "whitesage")
+                filename = public_id.split('/')[-1]
+                file_key = clean_key(filename)
+                cloudinary_map[file_key] = url
+                
         except Exception as e:
             st.warning(f"⚠️ Cloudinary Warning: {e}")
-            cloudinary_map = {} 
 
-        # >>> B. CHECK ADMIN DATABASE FIRST <<<
-        DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
-        IMAGE_DIR = os.path.join(BASE_DIR, "images")
-        data_loaded_from_db = False
-
-        if os.path.exists(DB_PATH):
+        # 2. Load Data (Excel Only - DB logic removed for safety)
+        for catalogue_name, excel_path in CATALOGUE_PATHS.items():
+            if not os.path.exists(excel_path): continue
             try:
-                with open(DB_PATH, 'r') as f: db_data = json.load(f)
+                df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
+                df = df.fillna("") 
+                df.columns = [str(c).strip() for c in df.columns]
+                df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
                 
-                if db_data.get("products"):
-                    df = pd.DataFrame(db_data["products"])
-                    df.rename(columns={"SKUCode": "SKU Code"}, inplace=True)
-                    for col in required_output_cols:
-                        if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
-                    
-                    df['Packaging'] = 'Default Packaging'
-                    df["ImageB64"] = "" 
-                    df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
-                    
+                # Standardize Columns
+                df['Catalogue'] = catalogue_name
+                df['Packaging'] = 'Default Packaging'
+                df["ImageB64"] = "" 
+                df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]
+                df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
+                
+                for col in required_output_cols:
+                    if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
+
+                # 3. STRICT IMAGE MATCHING
+                if cloudinary_map:
                     for index, row in df.iterrows():
-                        sku = str(row.get('SKU Code', '')).strip()
-                        local_img_path = os.path.join(IMAGE_DIR, f"{sku}.jpg")
+                        # Get raw names
+                        cat = str(row.get('Catalogue', '')).strip()      # e.g. "Sacred Element Catalogue"
+                        category = str(row.get('Category', '')).strip()  # e.g. "Witchcraft"
+                        item = str(row.get('ItemName', '')).strip()      # e.g. "White Sage"
                         
-                        if os.path.exists(local_img_path):
-                             df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
-                        else:
-                            # DB Fallback Logic (Same as Excel below)
-                            cat = str(row.get('Catalogue', '')).strip()
-                            category = str(row.get('Category', '')).strip()
-                            item = str(row.get('ItemName', '')).strip()
-                            
-                            path1 = clean_key(f"{cat}{category}{item}")
-                            path2 = clean_key(f"{category}{item}")
-                            path3 = clean_key(item)
-                            
-                            if path1 in cloudinary_map: found_url = cloudinary_map[path1]
-                            elif path2 in cloudinary_map: found_url = cloudinary_map[path2]
-                            elif path3 in cloudinary_map: found_url = cloudinary_map[path3]
-                            else: found_url = None
+                        # Generate Candidate Keys
+                        # 1. Full Path: Catalogue + Category + Item
+                        key_full = clean_key(f"{cat}{category}{item}")
+                        
+                        # 2. Partial Path: Category + Item (Implicit Catalogue)
+                        key_cat_item = clean_key(f"{category}{item}")
+                        
+                        # 3. Item Only: Just the name (Flat folder structure)
+                        key_item = clean_key(item)
 
-                            if found_url:
-                                optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
-                    
-                    return df[required_output_cols]
-            except Exception as e:
-                print(f"Admin DB Load Failed: {e}. Falling back to Excel.")
-                data_loaded_from_db = False
+                        found_url = None
+                        match_type = "None"
 
-        # C. Excel Fallback
-        if not data_loaded_from_db:
-            for catalogue_name, excel_path in CATALOGUE_PATHS.items():
-                if not os.path.exists(excel_path): continue
-                try:
-                    df = pd.read_excel(excel_path, sheet_name=0, dtype=str)
-                    df = df.fillna("") 
-                    df.columns = [str(c).strip() for c in df.columns]
-                    df.rename(columns={k.strip(): v for k, v in GLOBAL_COLUMN_MAPPING.items() if k.strip() in df.columns}, inplace=True)
-                    df['Catalogue'] = catalogue_name; df['Packaging'] = 'Default Packaging'; df["ImageB64"] = ""; df["ProductID"] = [f"PID_{str(uuid.uuid4())[:8]}" for _ in range(len(df))]; df['IsNew'] = pd.to_numeric(df.get('IsNew', 0), errors='coerce').fillna(0).astype(int)
-                    for col in required_output_cols:
-                        if col not in df.columns: df[col] = '' if col != 'IsNew' else 0
+                        # EXACT MATCH CHECKS (Priority Order)
+                        if key_full in cloudinary_map: 
+                            found_url = cloudinary_map[key_full]
+                            match_type = "Full Path"
+                        elif key_cat_item in cloudinary_map: 
+                            found_url = cloudinary_map[key_cat_item]
+                            match_type = "Cat+Item"
+                        elif key_item in cloudinary_map: 
+                            found_url = cloudinary_map[key_item]
+                            match_type = "Item Only"
+                        
+                        # Save to DF
+                        if found_url:
+                            optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
+                            df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
+                        
+                        # Debug Logging for first few items or specific items
+                        if index < 5 or "Sage" in item or "Bayleaf" in item:
+                            debug_log.append(f"Item: {item} | Keys Tried: [{key_full}], [{key_item}] | Match: {match_type}")
 
-                    if cloudinary_map:
-                        for index, row in df.iterrows():
-                            # --- EXACT PATH CONSTRUCTION ---
-                            cat = str(row.get('Catalogue', '')).strip()  # e.g. "Sacred Element Catalogue"
-                            category = str(row.get('Category', '')).strip() # e.g. "Witchcraft"
-                            item = str(row.get('ItemName', '')).strip()     # e.g. "White Sage"
+                all_data.append(df[required_output_cols])
+            except Exception as e: st.error(f"Error reading Excel {catalogue_name}: {e}")
 
-                            # We build the search key by combining them
-                            # Excel: "Sacred Element Catalogue" + "Witchcraft" + "White Sage"
-                            # Becomes Key: "sacredelementcataloguewitchcraftwhitesage"
-                            # This MATCHES the Cloudinary Key we made earlier!
-                            
-                            path_full = clean_key(f"{cat}{category}{item}")
-                            path_cat_item = clean_key(f"{category}{item}")
-                            path_item = clean_key(item)
+        # Show Debug Info in Sidebar
+        with st.sidebar:
+            with st.expander("🛠️ Image Sync Debugger"):
+                st.write("Recent Match Attempts:")
+                for log in debug_log:
+                    st.text(log)
 
-                            found_url = None
-                            
-                            if path_full in cloudinary_map: found_url = cloudinary_map[path_full]
-                            elif path_cat_item in cloudinary_map: found_url = cloudinary_map[path_cat_item]
-                            elif path_item in cloudinary_map: found_url = cloudinary_map[path_item]
-
-                            if found_url:
-                                optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
-                                df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
-                    
-                    all_data.append(df[required_output_cols])
-                except Exception as e: st.error(f"Error reading Excel {catalogue_name}: {e}")
-
-            if not all_data: return pd.DataFrame(columns=required_output_cols)
-            full_df = pd.concat(all_data, ignore_index=True)
-            return full_df
+        if not all_data: return pd.DataFrame(columns=required_output_cols)
+        return pd.concat(all_data, ignore_index=True)
 
     # --- 10. PDF GENERATOR ---
     PRODUCT_CARD_TEMPLATE = """
@@ -1094,6 +1075,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
