@@ -77,19 +77,13 @@ try:
 
     def clean_key(text):
         if not isinstance(text, str): return ""
-        # 1. Standard cleanup
-        text = text.lower().strip().replace(' ', '').replace('_', '').replace('-', '')
+        # 1. Lowercase everything
+        text = text.lower().strip()
         
-        # 2. EXPANDED STOP WORDS: Remove Brand/Folder noise
-        # Added 'witchcraft' just in case, but 'sacred'/'elements' are the most important.
-        stop_words = [
-            'catalogue', 'image', 'images', 'product', 'products', 'img', 
-            'sacred', 'elements', 'element', 'hem', 'se', 'incense', 'sticks'
-        ]
+        # 2. REMOVE SEPARATORS: This makes "White Sage" == "White_Sage"
+        # We replace both space ' ' and underscore '_' with nothing.
+        text = text.replace(' ', '').replace('_', '').replace('-', '').replace('/', '').replace('\\', '')
         
-        for word in stop_words:
-            text = text.replace(word, '')
-            
         return text
 
     def force_light_theme_setup():
@@ -201,17 +195,11 @@ try:
                 if not next_cursor: break
             
             for res in resources:
-                # --- CRITICAL FIX: DUAL INDEXING ---
-                # 1. Index the FULL PATH (e.g., "sacredelementswitchcraftwhitesage")
-                full_path_key = clean_key(res['public_id'])
-                cloudinary_map[full_path_key] = res['secure_url']
-
-                # 2. Index just the FILENAME (e.g., "whitesage")
-                # This ensures "White Sage" matches "White Sage.jpg" ignoring the folder!
-                filename_only = res['public_id'].split('/')[-1]
-                filename_key = clean_key(filename_only)
-                cloudinary_map[filename_key] = res['secure_url']
-                # -----------------------------------
+                # Store the CLEANED public_id (which ignores _ vs space differences)
+                # Example Cloudinary: "Sacred_Elements/Witchcraft/White_Sage.jpg"
+                # Becomes Key: "sacredelementswitchcraftwhitesage"
+                full_key = clean_key(res['public_id'])
+                cloudinary_map[full_key] = res['secure_url']
 
         except Exception as e:
             st.warning(f"⚠️ Cloudinary Warning: {e}")
@@ -243,10 +231,22 @@ try:
                         if os.path.exists(local_img_path):
                              df.loc[index, "ImageB64"] = get_image_as_base64_str(local_img_path, resize=True, max_size=(800, 800))
                         else:
-                            row_item_key = clean_key(row['ItemName'])
-                            if row_item_key in cloudinary_map:
-                                original_url = cloudinary_map[row_item_key]
-                                optimized_url = original_url.replace("/upload/", "/upload/w_800,q_auto/")
+                            # DB Fallback Logic (Same as Excel below)
+                            cat = str(row.get('Catalogue', '')).strip()
+                            category = str(row.get('Category', '')).strip()
+                            item = str(row.get('ItemName', '')).strip()
+                            
+                            path1 = clean_key(f"{cat}{category}{item}")
+                            path2 = clean_key(f"{category}{item}")
+                            path3 = clean_key(item)
+                            
+                            if path1 in cloudinary_map: found_url = cloudinary_map[path1]
+                            elif path2 in cloudinary_map: found_url = cloudinary_map[path2]
+                            elif path3 in cloudinary_map: found_url = cloudinary_map[path3]
+                            else: found_url = None
+
+                            if found_url:
+                                optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
                                 df.loc[index, "ImageB64"] = get_image_as_base64_str(optimized_url, max_size=None)
                     
                     return df[required_output_cols]
@@ -269,23 +269,25 @@ try:
 
                     if cloudinary_map:
                         for index, row in df.iterrows():
-                            # Clean the Excel Name (e.g. "White Sage" -> "whitesage")
-                            row_item_key = clean_key(row['ItemName'])
+                            # --- EXACT PATH CONSTRUCTION ---
+                            cat = str(row.get('Catalogue', '')).strip()  # e.g. "Sacred Element Catalogue"
+                            category = str(row.get('Category', '')).strip() # e.g. "Witchcraft"
+                            item = str(row.get('ItemName', '')).strip()     # e.g. "White Sage"
+
+                            # We build the search key by combining them
+                            # Excel: "Sacred Element Catalogue" + "Witchcraft" + "White Sage"
+                            # Becomes Key: "sacredelementcataloguewitchcraftwhitesage"
+                            # This MATCHES the Cloudinary Key we made earlier!
+                            
+                            path_full = clean_key(f"{cat}{category}{item}")
+                            path_cat_item = clean_key(f"{category}{item}")
+                            path_item = clean_key(item)
+
                             found_url = None
                             
-                            # 1. Exact Match Check (Will match the Filename Key we created!)
-                            if row_item_key in cloudinary_map: found_url = cloudinary_map[row_item_key]
-                            else:
-                                # 2. Fuzzy Match Check
-                                best_score = 0
-                                for cloud_key, url in cloudinary_map.items():
-                                    score = fuzz.token_sort_ratio(row_item_key, cloud_key)
-                                    if score > best_score:
-                                        best_score = score
-                                        found_url = url
-                                
-                                # Lowered threshold slightly to catch small typos
-                                if best_score < 70: found_url = None
+                            if path_full in cloudinary_map: found_url = cloudinary_map[path_full]
+                            elif path_cat_item in cloudinary_map: found_url = cloudinary_map[path_cat_item]
+                            elif path_item in cloudinary_map: found_url = cloudinary_map[path_item]
 
                             if found_url:
                                 optimized_url = found_url.replace("/upload/", "/upload/w_800,q_auto/")
@@ -1092,6 +1094,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
