@@ -900,6 +900,16 @@ try:
                         st.session_state.cart = saved_templates[sel_temp]
                         st.toast(f"Template '{sel_temp}' loaded!", icon="✅")
                         st.rerun()
+            # REFRESH DATA LOGIC
+        # products_df = load_data_cached(st.session_state.data_timestamp)  <-- OLD
+        products_df = load_data_v2(st.session_state.data_timestamp)      # <-- NEW V2
+        
+        # Display Debug Logs in Sidebar
+        with st.sidebar:
+            with st.expander("🛠️ Image Sync Debugger", expanded=True):
+                if 'debug_logs' in st.session_state:
+                    for line in st.session_state['debug_logs']:
+                        st.text(line)
             
             st.markdown("---")
             st.markdown("### 🔄 Data Sync")
@@ -1113,6 +1123,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
