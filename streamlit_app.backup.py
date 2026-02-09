@@ -430,6 +430,7 @@ try:
         
     # --- UPDATED PDF GENERATOR (Fixes Index Placement & Order) ---
     def generate_pdf_html(df_sorted, customer_name, logo_b64, case_selection_map):
+        # --- HELPER: Load images robustly ---
         def load_img_robust(fname, specific_full_path=None, resize=False, max_size=(500,500)):
             paths_to_check = []
             if specific_full_path: paths_to_check.append(specific_full_path)
@@ -443,6 +444,7 @@ try:
             if found_path: return get_image_as_base64_str(found_path, resize=resize, max_size=max_size)
             return "" 
 
+        # --- ASSETS LOADING ---
         cover_url = "https://res.cloudinary.com/dnoepbfbr/image/upload/v1769517106/Cover_Page.jpg"
         cover_bg_b64 = get_image_as_base64_str(cover_url)
         if not cover_bg_b64: cover_bg_b64 = load_img_robust("cover page.png", resize=False)
@@ -453,6 +455,7 @@ try:
 
         watermark_b64 = load_img_robust("watermark.png", resize=False)
 
+        # --- CSS STYLING (The Fix is Here) ---
         CSS_STYLES = f"""
             <!DOCTYPE html>
             <html><head><meta charset="UTF-8">
@@ -502,15 +505,62 @@ try:
                 page-break-before: avoid !important;
             }}
 
+            /* --- PRODUCT CARD STYLING --- */
             .product-card {{ 
                 display: inline-block; 
                 width: 23%; 
                 margin: 10px 1%; 
                 vertical-align: top;
                 font-size: 12pt;
-                padding: 5px; box-sizing: border-box; background-color: #fcfcfc; border: 1px solid #E5C384; 
-                border-radius: 5px; text-align: center; position: relative; overflow: hidden; height: 180px;
+                padding: 0; 
+                box-sizing: border-box; 
+                background-color: #fcfcfc; 
+                border: 1px solid #E5C384; 
+                border-radius: 5px; 
+                text-align: center; 
+                position: relative; 
+                overflow: hidden; 
+                height: 180px;
                 page-break-inside: avoid; 
+            }}
+            
+            /* Fixed Height Image Area */
+            .card-image-box {{
+                width: 100%;
+                height: 115px; 
+                position: relative;
+                background-color: #fff;
+                border-bottom: 1px solid #eee;
+                overflow: hidden;
+            }}
+            
+            /* Absolute Centering Hack for PDF Engines */
+            .card-image-box img {{
+                position: absolute;
+                top: 0; bottom: 0; left: 0; right: 0;
+                margin: auto;
+                max-width: 95%;
+                max-height: 95%;
+                width: auto;
+                height: auto;
+                display: block;
+            }}
+            
+            /* Fixed Height Text Area */
+            .card-info-box {{
+                height: 60px;
+                display: block;
+                padding: 5px;
+            }}
+
+            .card-name {{
+                font-family: serif;
+                color: #000;
+                line-height: 1.2;
+                font-weight: bold;
+                margin: 0;
+                padding-top: 5px;
+                display: block;
             }}
             </style></head><body style='margin: 0; padding: 0;'>
             <div id="watermark-layer"></div>
@@ -559,7 +609,6 @@ try:
                 current_subcategory = None
                 safe_category_id = create_safe_id(current_category)
                 
-                # --- SAFE TRY/EXCEPT BLOCK ---
                 if current_category in case_selection_map:
                     try:
                         row_data = case_selection_map[current_category]
@@ -567,7 +616,6 @@ try:
                         row_data = {}
                 else:
                     row_data = {}
-                # -----------------------------
 
                 html_parts.append('<div class="category-block clearfix">') 
                 category_open = True
@@ -606,44 +654,36 @@ try:
             img_b64 = row["ImageB64"] 
             mime_type = 'image/png' if (img_b64 and len(img_b64) > 20 and img_b64[:20].lower().find('i') != -1) else 'image/jpeg'
             
-            # --- FIX: Prevent Image Stretching ---
-            # 'width: auto; height: auto' prevents stretching. 'margin: 0 auto' centers it.
-            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" style="max-height: 100%; max-width: 100%; width: auto; height: auto; display: block; margin: 0 auto;" alt="{row.get("ItemName", "")}">' if img_b64 else '<div class="image-placeholder" style="color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
-            
-            packaging_text = row.get('Packaging', '').replace('Default Packaging', '')
-            sku_info = f"SKU: {row.get('SKU Code', 'N/A')}"
-            fragrance_list = [f.strip() for f in row.get('Fragrance', '').split(',') if f.strip() and f.strip().upper() != 'N/A']
-            fragrance_output = f"Fragrance: {', '.join(fragrance_list)}" if fragrance_list else "No fragrance info listed"
+            # --- IMAGE GENERATION ---
+            image_html_content = f'<img src="data:{mime_type};base64,{img_b64}" alt="Img">' if img_b64 else '<div style="padding-top:40px; color:#ccc; font-size:10px;">IMAGE NOT FOUND</div>'
             
             new_badge_html = """<div style="position: absolute; top: 0; right: 0; background-color: #dc3545; color: white; font-size: 8px; font-weight: bold; padding: 2px 8px; border-radius: 0 0 0 5px; z-index: 10;">NEW</div>""" if row.get('IsNew') == 1 else ""
 
-            # --- SMART FONT SCALE LOGIC ---
+            # --- FONT SCALING ---
             item_name_text = row.get('ItemName', 'N/A')
             name_len = len(str(item_name_text))
-            
-            if name_len < 35:
-                font_size = "9pt"
-            elif name_len < 55:
-                font_size = "8pt"
-            else:
-                font_size = "7pt"
-            # ------------------------------
+            if name_len < 30: font_size = "9pt"
+            elif name_len < 50: font_size = "8pt"
+            else: font_size = "7pt"
 
-            if PRODUCT_CARD_TEMPLATE:
-                card_output = PRODUCT_CARD_TEMPLATE.format(
-                    new_badge_html=new_badge_html,
-                    image_html=image_html_content,
-                    item_name=row.get('ItemName', 'N/A'),
-                    category_name=row['Category'],
-                    ref_no=index+1,
-                    packaging=packaging_text,
-                    sku_info=sku_info,
-                    fragrance=fragrance_output,
-                    font_size=font_size
-                )
-                html_parts.append(card_output)
+            # --- CARD HTML ASSEMBLY ---
+            # Using the new CSS classes .card-image-box and .card-info-box
+            card_html = f"""
+            <div class="product-card">
+                {new_badge_html}
+                <div class="card-image-box">
+                    {image_html_content}
+                </div>
+                <div class="card-info-box">
+                    <div class="card-name" style="font-size: {font_size};">
+                        <span style="color: #007bff; margin-right: 2px;">{index+1}.</span>{item_name_text}
+                    </div>
+                </div>
+            </div>
+            """
+            html_parts.append(card_html)
         
-        if category_open: html_parts.append('</div>') # Close last category
+        if category_open: html_parts.append('</div>')
         html_parts.append('<div style="clear: both;"></div></div></body></html>')
         
         return "".join(html_parts)
@@ -1027,6 +1067,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
