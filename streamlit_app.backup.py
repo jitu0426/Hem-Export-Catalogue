@@ -362,7 +362,7 @@ try:
                 height: 160px; 
                 background-repeat: no-repeat; 
                 background-position: center center; 
-                background-size: cover; 
+                background-size: contain; /* <--- This shows the full image */
                 background-color: #f9f9f9; 
             }
             
@@ -1023,6 +1023,7 @@ except Exception as e:
     st.error("🚨 CRITICAL APP CRASH 🚨")
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
+
 
 
 
