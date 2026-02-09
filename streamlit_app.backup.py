@@ -122,13 +122,16 @@ try:
     COVER_IMG_PATH = os.path.join(BASE_DIR, "assets", "cover page.png")
     WATERMARK_IMG_PATH = os.path.join(BASE_DIR, "assets", "watermark.png") 
 
+    GITHUB_RAW_BASE = "https://raw.githubusercontent.com/jitu0426/Hem-Export-Catalogue/main/"
+    
     CATALOGUE_PATHS = {
-        "HEM Product Catalogue": os.path.join(BASE_DIR, "Hem catalogue.xlsx"),
-        "Sacred Elements Catalogue": os.path.join(BASE_DIR, "SacredElement.xlsx"),
-        "Pooja Oil Catalogue": os.path.join(BASE_DIR, "Pooja Oil Catalogue.xlsx"),
-        "Candle Catalogue": os.path.join(BASE_DIR, "Candle Catalogue.xlsx"),
+        "HEM Product Catalogue": f"{GITHUB_RAW_BASE}Hem%20catalogue.xlsx",
+        "Sacred Elements Catalogue": f"{GITHUB_RAW_BASE}SacredElement.xlsx",
+        "Pooja Oil Catalogue": f"{GITHUB_RAW_BASE}Pooja%20Oil%20Catalogue.xlsx",
+        "Candle Catalogue": f"{GITHUB_RAW_BASE}Candle%20Catalogue.xlsx",
     }
-    CASE_SIZE_PATH = os.path.join(BASE_DIR, "Case Size.xlsx")
+
+    CASE_SIZE_PATH = f"{GITHUB_RAW_BASE}Case%20Size.xlsx"
 
     GLOBAL_COLUMN_MAPPING = {
         "Category": "Category", "Sub-Category": "Subcategory", "Item Name": "ItemName",
@@ -1092,4 +1095,5 @@ except Exception as e:
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
         
+
 
