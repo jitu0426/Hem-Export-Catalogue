@@ -467,11 +467,11 @@ try:
             return "" 
 
         # --- ASSETS LOADING ---
-        cover_url = "https://res.cloudinary.com/dnoepbfbr/image/upload/v1769517106/Cover_Page.jpg"
+        cover_url = "https://res.cloudinary.com/dnoepbfbr/image/upload/v1770703751/Cover_Page.jpg"
         cover_bg_b64 = get_image_as_base64_str(cover_url)
         if not cover_bg_b64: cover_bg_b64 = load_img_robust("cover page.png", resize=False)
 
-        journey_url = "https://res.cloudinary.com/dnoepbfbr/image/upload/v1769517106/image-journey.jpg" 
+        journey_url = "https://res.cloudinary.com/dnoepbfbr/image/upload/v1770703751/image-journey.jpg" 
         story_img_1_b64 = get_image_as_base64_str(journey_url, max_size=(600,600))
         if not story_img_1_b64: story_img_1_b64 = load_img_robust("image-journey.png", specific_full_path=STORY_IMG_1_PATH, resize=True, max_size=(600,600))
 
@@ -1096,6 +1096,7 @@ except Exception as e:
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
         
+
 
 
 
