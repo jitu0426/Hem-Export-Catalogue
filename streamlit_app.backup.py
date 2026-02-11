@@ -1,4 +1,4 @@
-import streamlit as st
+    import streamlit as st
 import os
 import sys
 import gc   # Garbage collection
@@ -345,13 +345,13 @@ try:
             .toc-title { text-align: center; font-family: serif; font-size: 32pt; color: #222; margin-bottom: 20px; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
             
             /* Catalogue Section Header in Index */
-            .toc-catalogue-section-header { 
+            h3.toc-catalogue-section-header { 
                 background-color: #333; 
                 color: #ffffff; 
                 font-family: sans-serif; 
                 font-size: 16pt; 
                 padding: 12px; 
-                margin: 30px 0 15px 0; 
+                margin: 0 0 15px 0; /* Removed top margin so it aligns cleanly at the top of a new page */
                 text-align: left; 
                 border-left: 8px solid #ff9800;
                 clear: both;
@@ -385,7 +385,7 @@ try:
                 height: 160px; 
                 background-repeat: no-repeat; 
                 background-position: center center; 
-                background-size: contain; /* <--- This shows the full image */
+                background-size: contain; 
                 background-color: #f9f9f9; 
             }
             
@@ -416,9 +416,16 @@ try:
         # Get unique catalogues in the order they appear in the dataframe
         catalogues = df_sorted['Catalogue'].unique()
 
+        is_first_catalogue = True
+
         for catalogue_name in catalogues:
-            # Add a header for the Catalogue
-            toc_html += f'<div class="toc-catalogue-section-header">{catalogue_name}</div>'
+            # Add page break for every catalogue index except the very first one (which shares the page with the TOC title)
+            page_break_style = 'style="page-break-before: always; padding-top: 20px;"' if not is_first_catalogue else 'style="padding-top: 10px;"'
+            
+            toc_html += f'<div {page_break_style}>'
+            
+            # Changed to h3 and applied proper classes
+            toc_html += f'<h3 class="toc-catalogue-section-header">{catalogue_name}</h3>'
             toc_html += '<div class="index-grid-container clearfix">'
             
             # Filter data for this specific catalogue
@@ -445,8 +452,10 @@ try:
                     </a>
                 """
             
-            # Close grid container for this catalogue
-            toc_html += '</div><div style="clear: both;"></div>'
+            # Close grid container and the page-break wrapper for this catalogue
+            toc_html += '</div><div style="clear: both;"></div></div>'
+            
+            is_first_catalogue = False
 
         toc_html += """</div>"""
         return toc_html
@@ -1096,6 +1105,7 @@ except Exception as e:
     st.error(f"Error Details: {e}")
     st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
         
+
 
 
 
