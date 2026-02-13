@@ -22,6 +22,7 @@ try:
     import subprocess
     import cloudinary
     import cloudinary.api
+    import cloudinary.uploader
     import requests
 
     # --- 1. SAFE IMPORT LOGIC ---
@@ -118,6 +119,7 @@ try:
     LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
     TEMPLATES_DIR = os.path.join(BASE_DIR, "templates") 
     SAVED_TEMPLATES_FILE = os.path.join(BASE_DIR, "saved_templates.json")
+    CUSTOM_ITEMS_FILE = os.path.join(BASE_DIR, "custom_products.json") # NEW
     STORY_IMG_1_PATH = os.path.join(BASE_DIR, "image-journey.png") 
     COVER_IMG_PATH = os.path.join(BASE_DIR, "assets", "cover page.png")
     WATERMARK_IMG_PATH = os.path.join(BASE_DIR, "assets", "watermark.png") 
@@ -141,7 +143,51 @@ try:
     }
     NO_SELECTION_PLACEHOLDER = "Select..." 
 
-    # --- 6. PDFKIT CONFIG ---
+    # --- 6. CUSTOM ITEM FUNCTIONS (ADDED MISSING FUNCTIONS) ---
+    def load_custom_items():
+        if not os.path.exists(CUSTOM_ITEMS_FILE): return []
+        try:
+            with open(CUSTOM_ITEMS_FILE, "r") as f: return json.load(f)
+        except: return []
+
+    def save_custom_items(items):
+        with open(CUSTOM_ITEMS_FILE, "w") as f: json.dump(items, f, indent=4)
+
+    def add_custom_item(catalogue, category, subcategory, item_name, fragrance, sku_code, is_new, image_file):
+        items = load_custom_items()
+        
+        img_url = ""
+        if image_file:
+            try:
+                # Upload to Cloudinary
+                res = cloudinary.uploader.upload(image_file, folder="custom_uploads")
+                img_url = res.get("secure_url", "")
+            except Exception as e:
+                print(f"Upload Error: {e}")
+
+        new_item = {
+            "ProductID": f"CUST_{uuid.uuid4().hex[:8]}",
+            "Catalogue": catalogue,
+            "Category": category,
+            "Subcategory": subcategory if subcategory else "N/A",
+            "ItemName": item_name,
+            "Fragrance": fragrance,
+            "SKU Code": sku_code,
+            "IsNew": 1 if is_new else 0,
+            "ImageB64": img_url, 
+            "Packaging": "Default",
+            "SerialNo": len(items) + 1
+        }
+        items.append(new_item)
+        save_custom_items(items)
+        return new_item
+
+    def delete_custom_item(pid):
+        items = load_custom_items()
+        items = [i for i in items if i["ProductID"] != pid]
+        save_custom_items(items)
+
+    # --- 7. PDFKIT CONFIG ---
     CONFIG = None
     try:
         if platform.system() == "Windows":
@@ -169,7 +215,7 @@ try:
         print(f"PDFKit Config Error: {e}")
         CONFIG = None
 
-    # --- 7. TEMPLATE MANAGEMENT ---
+    # --- 8. TEMPLATE MANAGEMENT ---
     def load_saved_templates():
         if not os.path.exists(SAVED_TEMPLATES_FILE): return {}
         try: 
@@ -185,7 +231,7 @@ try:
         except Exception as e:
             st.error(f"Failed to save template: {e}")
 
-    # --- 8. DATA LOADING ---
+    # --- 9. DATA LOADING ---
     
     # --- SMART DATA LOADER (Exact + Partial Matching) ---
     @st.cache_data(show_spinner="Syncing Data (Smart Match v4)...")
@@ -303,6 +349,21 @@ try:
 
                 all_data.append(df[required_output_cols])
             except Exception as e: st.error(f"Error reading Excel {catalogue_name}: {e}")
+
+        # --- C. MERGE CUSTOM ITEMS ---
+        custom_items = load_custom_items()
+        if custom_items:
+            custom_df = pd.DataFrame(custom_items)
+            # Ensure columns match
+            for col in required_output_cols:
+                if col not in custom_df.columns: custom_df[col] = '' if col != 'IsNew' else 0
+            
+            # Handle Images (Convert URL to Base64)
+            for idx, row in custom_df.iterrows():
+                if str(row['ImageB64']).startswith('http'):
+                     custom_df.at[idx, 'ImageB64'] = get_image_as_base64_str(row['ImageB64'])
+            
+            all_data.append(custom_df[required_output_cols])
 
         # Save logs for sidebar
         st.session_state['debug_logs'] = debug_log
@@ -900,7 +961,7 @@ try:
                 st.rerun()
 
         st.title("HEM PRODUCT CATALOGUE")
-        tab1, tab2, tab3 = st.tabs(["1. Filter", "2. Review", "3. Export"])
+        tab1, tab2, tab3, tab4 = st.tabs(["1. Filter", "2. Review", "3. Export", "4. Add New Product"])
         
         with tab1:
             if products_df.empty: st.error("No Data. Please check Excel file paths or run Admin Sync.")
@@ -1002,14 +1063,16 @@ try:
 
         with tab3:
             st.markdown('## Export Catalogue')
-            if not st.session_state.cart: 
+            if not st.session_state.cart:
                 st.info("Cart is empty.")
             else:
                 st.markdown("### 1. Select Case Sizes per Category")
-                cart_categories = sorted(list(set([item['Category'] for item in st.session_state.cart])))
+                cart_categories = sorted(list(set(
+                    [item['Category'] for item in st.session_state.cart]
+                )))
                 full_case_size_df = pd.DataFrame()
 
-                # --- NEW: LOAD FROM ADMIN DB FIRST ---
+                # Load from admin DB first
                 DB_PATH = os.path.join(BASE_DIR, "data", "database.json")
                 if os.path.exists(DB_PATH):
                     try:
@@ -1017,101 +1080,312 @@ try:
                             db_data = json.load(f)
                         if db_data.get("case_sizes"):
                             full_case_size_df = pd.DataFrame(db_data["case_sizes"])
-                    except: pass
-                
+                    except Exception:
+                        pass
+
                 # Fallback to Excel
-                if full_case_size_df.empty and os.path.exists(CASE_SIZE_PATH):
+                if full_case_size_df.empty:
                     try:
                         full_case_size_df = pd.read_excel(CASE_SIZE_PATH, dtype=str)
-                        full_case_size_df.columns = [c.strip() for c in full_case_size_df.columns]
-                    except: st.error("Error loading Case Size.xlsx")
+                        full_case_size_df.columns = [
+                            c.strip() for c in full_case_size_df.columns
+                        ]
+                    except Exception:
+                        st.error("Error loading Case Size data.")
 
                 selection_map = {}
                 if not full_case_size_df.empty:
-                    # Determine columns dynamically
-                    suffix_col = next((c for c in full_case_size_df.columns if "suffix" in c.lower()), None)
-                    cbm_col = next((c for c in full_case_size_df.columns if "cbm" in c.lower()), "CBM")
-                    
-                    if not suffix_col: 
-                        st.error(f"Could not find 'Carton Suffix' column. Found: {full_case_size_df.columns.tolist()}")
+                    suffix_col = next(
+                        (c for c in full_case_size_df.columns
+                         if "suffix" in c.lower()), None
+                    )
+                    cbm_col = next(
+                        (c for c in full_case_size_df.columns
+                         if "cbm" in c.lower()), "CBM"
+                    )
+
+                    if not suffix_col:
+                        st.error(
+                            f"Could not find 'Carton Suffix' column. "
+                            f"Found: {full_case_size_df.columns.tolist()}"
+                        )
                     else:
                         for cat in cart_categories:
-                            options = full_case_size_df[full_case_size_df['Category'] == cat].copy()
+                            options = full_case_size_df[
+                                full_case_size_df['Category'] == cat
+                            ].copy()
                             if not options.empty:
-                                options['DisplayLabel'] = options.apply(lambda x: f"{x.get(suffix_col, '')} (CBM: {x.get(cbm_col, '')})", axis=1)
+                                options['DisplayLabel'] = options.apply(
+                                    lambda x: (
+                                        f"{x.get(suffix_col, '')} "
+                                        f"(CBM: {x.get(cbm_col, '')})"
+                                    ), axis=1
+                                )
                                 label_list = options['DisplayLabel'].tolist()
-                                selected_label = st.selectbox(f"Select Case Size for **{cat}**", label_list, key=f"select_case_{cat}")
-                                selected_row = options[options['DisplayLabel'] == selected_label].iloc[0]
+                                selected_label = st.selectbox(
+                                    f"Select Case Size for **{cat}**",
+                                    label_list, key=f"select_case_{cat}"
+                                )
+                                selected_row = options[
+                                    options['DisplayLabel'] == selected_label
+                                ].iloc[0]
                                 selection_map[cat] = selected_row.to_dict()
-                            else: st.warning(f"No Case Size options found for category: {cat}")
-                
+                            else:
+                                st.warning(
+                                    f"No Case Size options found for category: {cat}"
+                                )
+
                 st.markdown("---")
                 name = st.text_input("Client Name", "Valued Client")
-                
-                if st.button("Generate Catalogue & Order Sheet", use_container_width=True):
+
+                if st.button("Generate Catalogue & Order Sheet",
+                             use_container_width=True):
                     cart_data = st.session_state.cart
-                    schema_cols = ['Catalogue', 'Category', 'Subcategory', 'ItemName', 'Fragrance', 'SKU Code', 'ImageB64', 'Packaging', 'IsNew']
+                    schema_cols = [
+                        'Catalogue', 'Category', 'Subcategory', 'ItemName',
+                        'Fragrance', 'SKU Code', 'ImageB64', 'Packaging', 'IsNew'
+                    ]
                     df_final = pd.DataFrame(cart_data)
-                    for col in schema_cols: 
-                        if col not in df_final.columns: df_final[col] = ''
-                    
-                    # --- CRITICAL FIX: RE-SORT CART BASED ON MASTER EXCEL ORDER ---
-                    # This ensures "Index Placement" and Catalogue flow match the Excel hierarchy (Hexa -> Tall -> ...)
-                    products_df = load_data_cached(st.session_state.data_timestamp)
-                    # Map ProductID to its original Index in the master file
-                    pid_to_index = {row['ProductID']: i for i, row in products_df.iterrows()}
-                    
+                    for col in schema_cols:
+                        if col not in df_final.columns:
+                            df_final[col] = ''
+
+                    # Re-sort based on master Excel order
+                    products_df_fresh = load_data_cached(
+                        st.session_state.data_timestamp
+                    )
+                    pid_to_index = {
+                        row['ProductID']: i
+                        for i, row in products_df_fresh.iterrows()
+                    }
+
                     if 'ProductID' in df_final.columns:
-                        df_final['excel_sort_order'] = df_final['ProductID'].map(pid_to_index)
+                        df_final['excel_sort_order'] = (
+                            df_final['ProductID'].map(pid_to_index)
+                        )
+                        # Custom items won't be in master, put them at end
+                        max_idx = len(products_df_fresh)
+                        df_final['excel_sort_order'] = (
+                            df_final['excel_sort_order'].fillna(max_idx)
+                        )
                         df_final = df_final.sort_values('excel_sort_order')
                         df_final = df_final.drop(columns=['excel_sort_order'])
-                    # -------------------------------------------------------------
 
-                    df_final['SerialNo'] = range(1, len(df_final)+1)
-                    
+                    df_final['SerialNo'] = range(1, len(df_final) + 1)
+
                     st.toast("Generating files...", icon="⏳")
-                    st.session_state.gen_excel_bytes = generate_excel_file(df_final, name, selection_map)
-                    
+                    st.session_state.gen_excel_bytes = generate_excel_file(
+                        df_final, name, selection_map
+                    )
+
                     try:
-                        logo = get_image_as_base64_str(LOGO_PATH, resize=True, max_size=(200,100)) 
-                        html = generate_pdf_html(df_final, name, logo, selection_map)
-                        
+                        logo = get_image_as_base64_str(
+                            LOGO_PATH, resize=True, max_size=(200, 100)
+                        )
+                        html = generate_pdf_html(
+                            df_final, name, logo, selection_map
+                        )
+
                         if CONFIG:
-                            options = { 'page-size': 'A4', 'margin-top': '0mm', 'margin-right': '0mm', 'margin-bottom': '0mm', 'margin-left': '0mm', 'encoding': "UTF-8", 'no-outline': None, 'enable-local-file-access': None, 'disable-smart-shrinking': None, 'print-media-type': None }
-                            st.session_state.gen_pdf_bytes = pdfkit.from_string(html, False, configuration=CONFIG, options=options)
+                            options = {
+                                'page-size': 'A4',
+                                'margin-top': '0mm',
+                                'margin-right': '0mm',
+                                'margin-bottom': '0mm',
+                                'margin-left': '0mm',
+                                'encoding': "UTF-8",
+                                'no-outline': None,
+                                'enable-local-file-access': None,
+                                'disable-smart-shrinking': None,
+                                'print-media-type': None
+                            }
+                            st.session_state.gen_pdf_bytes = pdfkit.from_string(
+                                html, False, configuration=CONFIG, options=options
+                            )
                             st.toast("PDF generated via PDFKit (Local)!", icon="🎉")
                         elif HAS_WEASYPRINT:
                             st.toast("Using Cloud Engine (WeasyPrint)...", icon="☁️")
-                            st.session_state.gen_pdf_bytes = HTML(string=html, base_url=BASE_DIR).write_pdf()
+                            st.session_state.gen_pdf_bytes = HTML(
+                                string=html, base_url=BASE_DIR
+                            ).write_pdf()
                             st.toast("PDF generated via WeasyPrint (Cloud)!", icon="🎉")
                         else:
-                            st.error("❌ No PDF engine found! (Install 'wkhtmltopdf' locally or 'weasyprint' on server).")
+                            st.error(
+                                "No PDF engine found! Install 'wkhtmltopdf' locally "
+                                "or 'weasyprint' on server."
+                            )
                             st.session_state.gen_pdf_bytes = None
-                        gc.collect()
 
-                    except Exception as e: 
+                        gc.collect()
+                    except Exception as e:
                         st.error(f"Error generating PDF: {e}")
                         st.session_state.gen_pdf_bytes = None
 
                 c_pdf, c_excel = st.columns(2)
                 with c_pdf:
-                    if st.session_state.gen_pdf_bytes: st.download_button("⬇️ Download PDF Catalogue", st.session_state.gen_pdf_bytes, f"{name.replace(' ', '_')}_catalogue.pdf", type="primary", use_container_width=True)
+                    if st.session_state.gen_pdf_bytes:
+                        st.download_button(
+                            "Download PDF Catalogue",
+                            st.session_state.gen_pdf_bytes,
+                            f"{name.replace(' ', '_')}_catalogue.pdf",
+                            type="primary", use_container_width=True
+                        )
                 with c_excel:
-                    if st.session_state.gen_excel_bytes: st.download_button("⬇️ Download Excel Order Sheet", st.session_state.gen_excel_bytes, f"{name.replace(' ', '_')}_order.xlsx", type="secondary", use_container_width=True)
+                    if st.session_state.gen_excel_bytes:
+                        st.download_button(
+                            "Download Excel Order Sheet",
+                            st.session_state.gen_excel_bytes,
+                            f"{name.replace(' ', '_')}_order.xlsx",
+                            type="secondary", use_container_width=True
+                        )
 
-        
+        # ====================== TAB 4: ADD NEW PRODUCT ======================
+        with tab4:
+            st.markdown("## Add New Product")
+            st.markdown(
+                "Add a custom product to any catalogue. "
+                "It will be tagged as **NEW** and included in the product list."
+            )
 
-        
+            with st.form("add_product_form", clear_on_submit=True):
+                st.markdown("### Product Details")
+
+                col_a, col_b = st.columns(2)
+
+                with col_a:
+                    # Catalogue selection: existing or custom
+                    existing_catalogues = list(CATALOGUE_PATHS.keys()) + [
+                        "Custom Items"
+                    ]
+                    new_catalogue = st.selectbox(
+                        "Catalogue *", existing_catalogues,
+                        help="Select which catalogue this product belongs to."
+                    )
+
+                    # Category: show existing ones from that catalogue + allow new
+                    if not products_df.empty:
+                        existing_cats = products_df[
+                            products_df['Catalogue'] == new_catalogue
+                        ]['Category'].unique().tolist()
+                    else:
+                        existing_cats = []
+
+                    cat_input_mode = st.radio(
+                        "Category Input",
+                        ["Select Existing", "Type New"],
+                        horizontal=True
+                    )
+                    if cat_input_mode == "Select Existing" and existing_cats:
+                        new_category = st.selectbox(
+                            "Category *", existing_cats
+                        )
+                    else:
+                        new_category = st.text_input(
+                            "Category Name *",
+                            placeholder="e.g. Hexa Incense Sticks"
+                        )
+
+                    new_subcategory = st.text_input(
+                        "Sub-Category",
+                        placeholder="e.g. Premium Range (leave blank for N/A)"
+                    )
+
+                with col_b:
+                    new_item_name = st.text_input(
+                        "Item Name *",
+                        placeholder="e.g. Lavender Hexa"
+                    )
+                    new_fragrance = st.text_input(
+                        "Fragrance / Description",
+                        placeholder="e.g. Lavender"
+                    )
+                    new_sku = st.text_input(
+                        "SKU Code",
+                        placeholder="e.g. HEM-LAV-HEX-001"
+                    )
+                    new_is_new = st.checkbox("Mark as NEW product", value=True)
+
+                st.markdown("### Product Image")
+                new_image = st.file_uploader(
+                    "Upload product image (optional)",
+                    type=["jpg", "jpeg", "png", "webp"],
+                    help="Image will be uploaded to Cloudinary automatically."
+                )
+
+                if new_image:
+                    st.image(new_image, caption="Preview", width=200)
+
+                submitted = st.form_submit_button(
+                    "Add Product", use_container_width=True, type="primary"
+                )
+
+                if submitted:
+                    # Validation
+                    errors = []
+                    if not new_catalogue:
+                        errors.append("Catalogue is required.")
+                    if not new_category:
+                        errors.append("Category is required.")
+                    if not new_item_name:
+                        errors.append("Item Name is required.")
+
+                    if errors:
+                        for err in errors:
+                            st.error(err)
+                    else:
+                        with st.spinner("Adding product..."):
+                            added = add_custom_item(
+                                catalogue=new_catalogue,
+                                category=new_category,
+                                subcategory=new_subcategory,
+                                item_name=new_item_name,
+                                fragrance=new_fragrance,
+                                sku_code=new_sku,
+                                is_new=new_is_new,
+                                image_file=new_image
+                            )
+                        st.success(
+                            f"Product '{new_item_name}' added successfully! "
+                            f"(ID: {added['ProductID']})"
+                        )
+                        st.info(
+                            "Click **Refresh Cloudinary & Excel** in the sidebar "
+                            "to see it in the product list."
+                        )
+
+            # --- MANAGE EXISTING CUSTOM ITEMS ---
+            st.markdown("---")
+            st.markdown("### Manage Custom Products")
+            custom_items = load_custom_items()
+
+            if custom_items:
+                st.markdown(f"**{len(custom_items)} custom product(s) added.**")
+
+                for i, item in enumerate(custom_items):
+                    col_info, col_del = st.columns([5, 1])
+                    with col_info:
+                        new_tag = " **[NEW]**" if item.get('IsNew', 0) == 1 else ""
+                        st.markdown(
+                            f"**{i+1}.** {item['ItemName']}{new_tag} "
+                            f"| {item['Catalogue']} > {item['Category']}"
+                        )
+                    with col_del:
+                        if st.button("Delete", key=f"del_custom_{item['ProductID']}"):
+                            delete_custom_item(item['ProductID'])
+                            st.session_state.data_timestamp = time.time()
+                            st.cache_data.clear()
+                            st.toast(
+                                f"Deleted '{item['ItemName']}'", icon="🗑️"
+                            )
+                            st.rerun()
+            else:
+                st.info("No custom products added yet.")
+
 # --- SAFETY BOOT CATCH-ALL ---
 except Exception as e:
-    st.error("🚨 CRITICAL APP CRASH 🚨")
+    st.error("CRITICAL APP CRASH")
     st.error(f"Error Details: {e}")
-    st.info("Check your 'packages.txt', 'requirements.txt', and Render Start Command.")
-        
-
-
-
-
-
-
-
+    st.info(
+        "Check your 'packages.txt', 'requirements.txt', "
+        "and Render Start Command."
+    )
