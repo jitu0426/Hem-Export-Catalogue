@@ -1,126 +1,135 @@
 """
-HEM Product Catalogue v3 - Luxury Dark Gold Theme
-===================================================
-Full CSS for a premium dark-themed app with gold accents,
-animated gradients, glassmorphism cards, and rich typography.
+HEM Product Catalogue v3 - HEM Brand Light Theme
+==================================================
+Authentic HEM Corporation light palette:
+  Primary:   HEM Crimson Red   #c8102e
+  Secondary: Saffron Amber     #e8870a
+  Accent:    Warm Gold         #fdbc00
+  Background:Warm Cream White  #fff9f5
+  Cards:     Pure White        #ffffff
+  Dark text: Charcoal          #1a0a0a
+
 Injected via st.markdown(APP_CSS, unsafe_allow_html=True) in app.py.
 """
 
 APP_CSS = """
 <style>
 /* ═══════════════════════════════════════════════════════════════════════════
-   GOOGLE FONTS
+   GOOGLE FONTS — Cinzel for headings + Inter for body
 ═══════════════════════════════════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap');
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CSS DESIGN TOKENS
+   CSS DESIGN TOKENS — HEM Brand (Light Mode)
 ═══════════════════════════════════════════════════════════════════════════ */
 :root {
-    /* Dark backgrounds */
-    --bg-deep:    #0a0a0f;
-    --bg-dark:    #0f0f18;
-    --bg-card:    #141420;
-    --bg-card2:   #1a1a2e;
-    --bg-glass:   rgba(20,20,35,0.85);
+    /* ── HEM Brand Reds ── */
+    --hem-red:        #c8102e;
+    --hem-red-deep:   #8b0a1e;
+    --hem-red-light:  #e8304a;
+    --hem-red-pale:   #fdedf0;
+    --hem-red-glow:   rgba(200,16,46,0.14);
 
-    /* Gold palette */
-    --gold:       #c9a84c;
-    --gold-light: #e8cc7a;
-    --gold-dark:  #9a7a2e;
-    --gold-glow:  rgba(201,168,76,0.25);
-    --gold-glow2: rgba(201,168,76,0.08);
+    /* ── Saffron / Amber ── */
+    --saffron:        #e8870a;
+    --saffron-light:  #f5a832;
+    --saffron-pale:   #fff5e6;
+    --saffron-glow:   rgba(232,135,10,0.15);
 
-    /* Accent colors */
-    --accent-blue:   #4a9eff;
-    --accent-green:  #2ecc71;
-    --accent-red:    #e74c3c;
-    --accent-purple: #9b59b6;
+    /* ── Gold ── */
+    --gold:           #fdbc00;
+    --gold-dark:      #c49200;
+    --gold-pale:      #fffbe6;
 
-    /* Text */
+    /* ── Light Backgrounds ── */
+    --bg-page:        #fff9f5;
+    --bg-card:        #ffffff;
+    --bg-card-warm:   #fffaf7;
+    --bg-cream:       #fdf5ee;
+    --bg-sidebar:     #1a0508;
+
+    /* ── Borders ── */
+    --border-red:     rgba(200,16,46,0.20);
+    --border-saffron: rgba(232,135,10,0.22);
+    --border-gold:    rgba(253,188,0,0.30);
+    --border-light:   rgba(0,0,0,0.08);
+    --border-medium:  rgba(0,0,0,0.12);
+
+    /* ── Text ── */
+    --text-dark:   #1a0a0a;
+    --text-body:   #3d2020;
+    --text-mid:    #6b4040;
+    --text-muted:  #a07070;
     --text-white:  #ffffff;
-    --text-light:  #e8e8f0;
-    --text-mid:    #a0a0c0;
-    --text-muted:  #60607a;
 
-    /* Borders */
-    --border-gold:   rgba(201,168,76,0.3);
-    --border-glass:  rgba(255,255,255,0.08);
-    --border-dark:   rgba(255,255,255,0.04);
+    /* ── Shadows ── */
+    --shadow-sm:   0 1px 4px rgba(200,16,46,0.08), 0 2px 8px rgba(0,0,0,0.06);
+    --shadow-md:   0 4px 16px rgba(200,16,46,0.10), 0 2px 8px rgba(0,0,0,0.08);
+    --shadow-lg:   0 8px 32px rgba(200,16,46,0.12), 0 4px 16px rgba(0,0,0,0.08);
+    --shadow-red:  0 4px 20px rgba(200,16,46,0.25);
 
-    /* Shadows */
-    --shadow-gold:   0 0 30px rgba(201,168,76,0.15);
-    --shadow-dark:   0 8px 32px rgba(0,0,0,0.6);
-    --shadow-card:   0 4px 20px rgba(0,0,0,0.4);
-    --shadow-glow:   0 0 60px rgba(201,168,76,0.1);
-
-    /* Spacing & radius */
+    /* ── Radius ── */
     --r-sm:  6px;
     --r-md:  12px;
     --r-lg:  18px;
     --r-xl:  24px;
 
-    /* Transitions */
+    /* ── Transitions ── */
     --t-fast:   0.15s ease;
     --t-normal: 0.25s ease;
-    --t-slow:   0.4s ease;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   GLOBAL RESET & BASE
+   GLOBAL BASE — Warm cream background
 ═══════════════════════════════════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; }
 
-/* Dark background for the entire app */
 .stApp {
-    background: var(--bg-deep) !important;
-    color: var(--text-light) !important;
+    background: var(--bg-page) !important;
+    color: var(--text-body) !important;
     font-family: 'Inter', sans-serif;
 }
 
-/* Remove Streamlit default white background */
 .main .block-container {
     background: transparent !important;
     padding-top: 1rem;
-    max-width: 1400px;
+    max-width: 1440px;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   ANIMATED BACKGROUND (subtle moving gradient)
-═══════════════════════════════════════════════════════════════════════════ */
+/* Subtle warm gradient background */
 .stApp::before {
     content: '';
     position: fixed;
     top: 0; left: 0;
     width: 100%; height: 100%;
     background:
-        radial-gradient(ellipse 80% 50% at 20% 20%, rgba(201,168,76,0.05) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(74,158,255,0.04) 0%, transparent 60%),
-        radial-gradient(ellipse 100% 100% at 50% 50%, #0a0a0f 0%, #060608 100%);
+        radial-gradient(ellipse 60% 40% at 10% 5%,  rgba(200,16,46,0.04) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 90% 90%, rgba(232,135,10,0.03) 0%, transparent 60%),
+        radial-gradient(ellipse 100% 100% at 50% 50%, #fff9f5 0%, #fdf4ee 100%);
     z-index: -1;
     pointer-events: none;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN TITLE BANNER — Luxury logo header
+   MAIN TITLE BANNER
 ═══════════════════════════════════════════════════════════════════════════ */
 .main-title {
     background: linear-gradient(135deg,
-        #0a0a0f 0%,
-        #141425 30%,
-        #1a1a35 60%,
-        #0f0f1f 100%);
-    border: 1px solid var(--border-gold);
+        #c8102e 0%,
+        #a50d26 30%,
+        #8b0a1e 60%,
+        #a50d26 80%,
+        #c8102e 100%);
     border-radius: var(--r-xl);
-    padding: 36px 48px 28px;
-    margin-bottom: 32px;
+    padding: 38px 52px 30px;
+    margin-bottom: 28px;
     text-align: center;
     position: relative;
     overflow: hidden;
-    box-shadow: var(--shadow-dark), var(--shadow-glow), inset 0 1px 0 rgba(201,168,76,0.2);
+    box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255,255,255,0.08) inset;
 }
 
-/* Shimmer sweep animation */
+/* Saffron shimmer sweep */
 .main-title::before {
     content: '';
     position: absolute;
@@ -128,49 +137,60 @@ APP_CSS = """
     width: 300%; height: 100%;
     background: linear-gradient(90deg,
         transparent 30%,
-        rgba(201,168,76,0.06) 50%,
+        rgba(253,188,0,0.12) 50%,
         transparent 70%);
-    animation: title-shimmer 4s ease-in-out infinite;
+    animation: title-shimmer 5s ease-in-out infinite;
 }
 
-/* Gold horizontal rule above text */
+/* Bottom saffron-gold line */
 .main-title::after {
     content: '';
     position: absolute;
-    bottom: 0; left: 10%; right: 10%;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--gold), transparent);
-    opacity: 0.6;
+    bottom: 0; left: 6%; right: 6%;
+    height: 2px;
+    background: linear-gradient(90deg,
+        transparent,
+        var(--saffron-light),
+        var(--gold),
+        var(--saffron-light),
+        transparent);
+    opacity: 0.7;
 }
 
 @keyframes title-shimmer {
     0%   { left: -150%; }
-    100% { left: 100%; }
+    100% { left: 100%;  }
 }
 
-/* The title text */
+/* Brand name */
 .main-title .title-brand {
-    font-family: 'Playfair Display', serif;
-    font-size: 42px;
-    font-weight: 800;
-    letter-spacing: 6px;
+    font-family: 'Cinzel', serif;
+    font-size: 46px;
+    font-weight: 900;
+    letter-spacing: 10px;
     text-transform: uppercase;
-    background: linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 50%, var(--gold-dark) 100%);
+    background: linear-gradient(135deg,
+        #ffd84d 0%,
+        #fdbc00 25%,
+        #ffffff 50%,
+        #fdbc00 75%,
+        #f5a832 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
     display: block;
-    margin-bottom: 6px;
-    text-shadow: none;
-    filter: drop-shadow(0 0 20px rgba(201,168,76,0.4));
+    margin-bottom: 8px;
+    filter: drop-shadow(0 2px 12px rgba(0,0,0,0.25));
 }
+
+/* Subtitle */
 .main-title .title-sub {
     font-family: 'Inter', sans-serif;
-    font-size: 12px;
-    font-weight: 400;
-    letter-spacing: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 5px;
     text-transform: uppercase;
-    color: var(--text-mid);
+    color: rgba(255,220,200,0.80);
     display: block;
     margin-top: 4px;
 }
@@ -179,43 +199,41 @@ APP_CSS = """
    TAB NAVIGATION
 ═══════════════════════════════════════════════════════════════════════════ */
 .stTabs [data-baseweb="tab-list"] {
-    background: rgba(20,20,35,0.9);
-    border: 1px solid var(--border-glass);
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
     border-radius: var(--r-lg);
-    padding: 6px;
-    gap: 4px;
-    backdrop-filter: blur(10px);
-    box-shadow: var(--shadow-card);
+    padding: 5px;
+    gap: 3px;
+    box-shadow: var(--shadow-sm);
 }
 
 .stTabs [data-baseweb="tab"] {
     border-radius: 10px;
-    padding: 10px 26px;
+    padding: 10px 24px;
     font-weight: 600;
     font-size: 13px;
     color: var(--text-mid) !important;
     background: transparent !important;
     border: 1px solid transparent !important;
     transition: all var(--t-normal);
-    letter-spacing: 0.3px;
+    letter-spacing: 0.2px;
     font-family: 'Inter', sans-serif;
 }
 
 .stTabs [data-baseweb="tab"]:hover {
-    color: var(--gold-light) !important;
-    background: rgba(201,168,76,0.06) !important;
-    border-color: var(--border-gold) !important;
+    color: var(--hem-red) !important;
+    background: var(--hem-red-pale) !important;
+    border-color: var(--border-red) !important;
 }
 
-/* Active tab — gold gradient fill */
+/* Active tab — HEM red */
 .stTabs [aria-selected="true"] {
-    background: linear-gradient(135deg, rgba(201,168,76,0.2), rgba(201,168,76,0.08)) !important;
-    color: var(--gold-light) !important;
-    border-color: var(--border-gold) !important;
-    box-shadow: 0 0 20px rgba(201,168,76,0.15), inset 0 1px 0 rgba(201,168,76,0.2) !important;
+    background: var(--hem-red) !important;
+    color: #ffffff !important;
+    border-color: var(--hem-red) !important;
+    box-shadow: var(--shadow-red) !important;
 }
 
-/* Tab highlight bar — hide default blue underline */
 .stTabs [data-baseweb="tab-highlight"] {
     display: none !important;
 }
@@ -223,11 +241,14 @@ APP_CSS = """
 /* ═══════════════════════════════════════════════════════════════════════════
    BUTTONS
 ═══════════════════════════════════════════════════════════════════════════ */
-/* ── Primary (gold) ── */
+/* ── Primary — HEM Red solid ── */
 button[kind="primary"],
 .stButton button[kind="primary"] {
-    background: linear-gradient(135deg, #c9a84c 0%, #e8cc7a 50%, #9a7a2e 100%) !important;
-    color: #0a0a0f !important;
+    background: linear-gradient(135deg,
+        #c8102e 0%,
+        #e8304a 50%,
+        #c8102e 100%) !important;
+    color: #ffffff !important;
     border: none !important;
     font-weight: 700 !important;
     font-family: 'Inter', sans-serif !important;
@@ -235,8 +256,9 @@ button[kind="primary"],
     letter-spacing: 1.2px !important;
     text-transform: uppercase !important;
     border-radius: 8px !important;
-    padding: 10px 20px !important;
-    box-shadow: 0 4px 15px rgba(201,168,76,0.3), inset 0 1px 0 rgba(255,255,255,0.2) !important;
+    padding: 10px 22px !important;
+    box-shadow: 0 4px 14px rgba(200,16,46,0.30),
+                inset 0 1px 0 rgba(255,255,255,0.15) !important;
     transition: all var(--t-normal) !important;
     position: relative;
     overflow: hidden;
@@ -250,54 +272,56 @@ button[kind="primary"]::before {
 }
 button[kind="primary"]:hover::before { left: 100%; }
 button[kind="primary"]:hover {
-    box-shadow: 0 8px 25px rgba(201,168,76,0.5), inset 0 1px 0 rgba(255,255,255,0.3) !important;
+    box-shadow: 0 6px 22px rgba(200,16,46,0.40),
+                inset 0 1px 0 rgba(255,255,255,0.20) !important;
     transform: translateY(-2px) !important;
 }
 button[kind="primary"]:active { transform: translateY(0) !important; }
 
-/* ── Secondary (dark glass blue) ── */
+/* ── Secondary — Saffron/Amber outline ── */
 button[kind="secondary"],
 .stButton button[kind="secondary"] {
-    background: linear-gradient(135deg, rgba(74,158,255,0.15), rgba(74,158,255,0.05)) !important;
-    color: var(--accent-blue) !important;
-    border: 1px solid rgba(74,158,255,0.3) !important;
+    background: var(--saffron-pale) !important;
+    color: var(--saffron) !important;
+    border: 1px solid var(--border-saffron) !important;
     font-weight: 600 !important;
     font-size: 12px !important;
     letter-spacing: 0.8px !important;
     text-transform: uppercase !important;
     border-radius: 8px !important;
     transition: all var(--t-normal) !important;
-    backdrop-filter: blur(8px) !important;
 }
 button[kind="secondary"]:hover {
-    background: linear-gradient(135deg, rgba(74,158,255,0.25), rgba(74,158,255,0.12)) !important;
-    border-color: var(--accent-blue) !important;
-    box-shadow: 0 4px 20px rgba(74,158,255,0.25) !important;
-    transform: translateY(-2px) !important;
+    background: rgba(232,135,10,0.12) !important;
+    border-color: var(--saffron) !important;
+    box-shadow: 0 3px 12px rgba(232,135,10,0.20) !important;
+    transform: translateY(-1px) !important;
 }
 
 /* ── Tertiary / default ── */
 button[kind="tertiary"],
 .stButton button {
-    background: rgba(255,255,255,0.04) !important;
+    background: var(--bg-card) !important;
     color: var(--text-mid) !important;
-    border: 1px solid var(--border-glass) !important;
+    border: 1px solid var(--border-light) !important;
     font-weight: 500 !important;
     border-radius: 8px !important;
     transition: all var(--t-fast) !important;
     font-size: 12px !important;
 }
 button[kind="tertiary"]:hover {
-    background: rgba(255,255,255,0.08) !important;
-    color: var(--text-light) !important;
-    border-color: rgba(255,255,255,0.15) !important;
+    background: var(--hem-red-pale) !important;
+    color: var(--hem-red) !important;
+    border-color: var(--border-red) !important;
 }
 
-/* ── Download button (green) ── */
+/* ── Download button — Gold ── */
 [data-testid="stDownloadButton"] button {
-    background: linear-gradient(135deg, rgba(46,204,113,0.2), rgba(46,204,113,0.08)) !important;
-    color: var(--accent-green) !important;
-    border: 1px solid rgba(46,204,113,0.35) !important;
+    background: linear-gradient(135deg,
+        var(--gold-pale),
+        rgba(253,188,0,0.12)) !important;
+    color: var(--gold-dark) !important;
+    border: 1px solid var(--border-gold) !important;
     font-weight: 700 !important;
     letter-spacing: 0.8px !important;
     text-transform: uppercase !important;
@@ -306,171 +330,180 @@ button[kind="tertiary"]:hover {
     transition: all var(--t-normal) !important;
 }
 [data-testid="stDownloadButton"] button:hover {
-    background: linear-gradient(135deg, rgba(46,204,113,0.3), rgba(46,204,113,0.15)) !important;
-    box-shadow: 0 4px 20px rgba(46,204,113,0.3) !important;
-    transform: translateY(-2px) !important;
+    background: rgba(253,188,0,0.20) !important;
+    box-shadow: 0 3px 14px rgba(253,188,0,0.25) !important;
+    transform: translateY(-1px) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   INPUT FIELDS — Dark glass style
+   INPUT FIELDS
 ═══════════════════════════════════════════════════════════════════════════ */
 .stTextInput input,
 .stTextInput textarea {
-    background: rgba(20,20,35,0.8) !important;
-    color: var(--text-light) !important;
-    border: 1px solid var(--border-glass) !important;
+    background: var(--bg-card) !important;
+    color: var(--text-dark) !important;
+    border: 1px solid var(--border-medium) !important;
     border-radius: var(--r-md) !important;
     padding: 10px 14px !important;
     font-size: 14px !important;
     transition: border-color var(--t-fast), box-shadow var(--t-fast) !important;
-    backdrop-filter: blur(8px) !important;
+    box-shadow: var(--shadow-sm) !important;
 }
 .stTextInput input::placeholder { color: var(--text-muted) !important; }
 .stTextInput input:focus {
-    border-color: var(--gold) !important;
-    box-shadow: 0 0 0 3px var(--gold-glow) !important;
-    background: rgba(25,25,42,0.95) !important;
+    border-color: var(--hem-red) !important;
+    box-shadow: 0 0 0 3px var(--hem-red-glow), var(--shadow-sm) !important;
+    outline: none !important;
 }
 
 /* Selectbox */
 .stSelectbox > div > div {
-    background: rgba(20,20,35,0.8) !important;
-    border: 1px solid var(--border-glass) !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-medium) !important;
     border-radius: var(--r-md) !important;
-    color: var(--text-light) !important;
-    transition: border-color var(--t-fast), box-shadow var(--t-fast) !important;
+    color: var(--text-dark) !important;
+    box-shadow: var(--shadow-sm) !important;
+    transition: border-color var(--t-fast) !important;
 }
 .stSelectbox > div > div:focus-within {
-    border-color: var(--gold) !important;
-    box-shadow: 0 0 0 3px var(--gold-glow) !important;
+    border-color: var(--hem-red) !important;
+    box-shadow: 0 0 0 3px var(--hem-red-glow), var(--shadow-sm) !important;
 }
 
 /* Multiselect */
 .stMultiSelect > div > div {
-    background: rgba(20,20,35,0.8) !important;
-    border: 1px solid var(--border-glass) !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-medium) !important;
     border-radius: var(--r-md) !important;
+    box-shadow: var(--shadow-sm) !important;
 }
 .stMultiSelect > div > div:focus-within {
-    border-color: var(--gold) !important;
-    box-shadow: 0 0 0 3px var(--gold-glow) !important;
+    border-color: var(--hem-red) !important;
+    box-shadow: 0 0 0 3px var(--hem-red-glow) !important;
 }
-/* Selected chips in multiselect */
+/* Chips */
 [data-baseweb="tag"] {
-    background: linear-gradient(135deg, rgba(201,168,76,0.2), rgba(201,168,76,0.1)) !important;
-    border: 1px solid var(--border-gold) !important;
-    color: var(--gold-light) !important;
+    background: var(--hem-red-pale) !important;
+    border: 1px solid var(--border-red) !important;
+    color: var(--hem-red) !important;
     border-radius: 6px !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SIDEBAR — Dark navy
+   SIDEBAR — Deep HEM red dark (brand contrast)
 ═══════════════════════════════════════════════════════════════════════════ */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #080810 0%, #0c0c1a 50%, #080810 100%) !important;
-    border-right: 1px solid var(--border-gold) !important;
-    box-shadow: 4px 0 30px rgba(0,0,0,0.5);
+    background: linear-gradient(180deg,
+        #1a0508 0%,
+        #220a0c 40%,
+        #1a0508 80%,
+        #110305 100%) !important;
+    border-right: 2px solid var(--hem-red) !important;
+    box-shadow: 4px 0 24px rgba(200,16,46,0.15);
 }
 section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3 {
-    color: var(--gold) !important;
-    font-family: 'Playfair Display', serif !important;
+    color: var(--saffron-light) !important;
+    font-family: 'Cinzel', serif !important;
     letter-spacing: 0.5px;
 }
 section[data-testid="stSidebar"] p,
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] .stMarkdown {
-    color: var(--text-mid) !important;
+    color: rgba(255,220,200,0.75) !important;
 }
 section[data-testid="stSidebar"] .stCaption {
-    color: var(--text-muted) !important;
+    color: rgba(200,130,130,0.65) !important;
     font-size: 11px;
 }
 
 /* Sidebar inputs */
 section[data-testid="stSidebar"] .stTextInput input {
-    background: rgba(201,168,76,0.05) !important;
-    border-color: rgba(201,168,76,0.2) !important;
+    background: rgba(255,255,255,0.08) !important;
+    color: #fff9f5 !important;
+    border-color: rgba(232,135,10,0.30) !important;
 }
 section[data-testid="stSidebar"] .stSelectbox > div > div {
-    background: rgba(201,168,76,0.05) !important;
-    border-color: rgba(201,168,76,0.2) !important;
+    background: rgba(255,255,255,0.08) !important;
+    color: #fff9f5 !important;
+    border-color: rgba(232,135,10,0.30) !important;
 }
 
-/* Sidebar buttons: gold style */
+/* Sidebar buttons — saffron */
 section[data-testid="stSidebar"] button {
-    background: linear-gradient(135deg, rgba(201,168,76,0.15), rgba(201,168,76,0.05)) !important;
-    color: var(--gold-light) !important;
-    border: 1px solid var(--border-gold) !important;
+    background: rgba(232,135,10,0.15) !important;
+    color: var(--saffron-light) !important;
+    border: 1px solid rgba(232,135,10,0.35) !important;
     font-weight: 600 !important;
 }
 section[data-testid="stSidebar"] button:hover {
-    background: linear-gradient(135deg, rgba(201,168,76,0.25), rgba(201,168,76,0.12)) !important;
-    box-shadow: 0 0 15px rgba(201,168,76,0.2) !important;
+    background: rgba(232,135,10,0.28) !important;
+    box-shadow: 0 0 14px rgba(232,135,10,0.22) !important;
 }
 
 /* Sidebar expanders */
 section[data-testid="stSidebar"] .streamlit-expanderHeader {
-    background: rgba(201,168,76,0.04) !important;
-    color: var(--gold-light) !important;
-    border: 1px solid rgba(201,168,76,0.15) !important;
+    background: rgba(255,255,255,0.05) !important;
+    color: var(--saffron-light) !important;
+    border: 1px solid rgba(200,16,46,0.20) !important;
     border-radius: var(--r-md) !important;
 }
 section[data-testid="stSidebar"] .streamlit-expanderHeader:hover {
-    background: rgba(201,168,76,0.08) !important;
+    background: rgba(200,16,46,0.12) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    EXPANDERS
 ═══════════════════════════════════════════════════════════════════════════ */
 .streamlit-expanderHeader {
-    background: linear-gradient(135deg, rgba(20,20,35,0.9), rgba(25,25,45,0.7)) !important;
-    color: var(--text-light) !important;
-    border: 1px solid var(--border-glass) !important;
+    background: var(--bg-card) !important;
+    color: var(--text-body) !important;
+    border: 1px solid var(--border-light) !important;
     border-radius: var(--r-md) !important;
     padding: 12px 18px !important;
     font-weight: 600 !important;
     font-size: 14px !important;
     transition: all var(--t-fast) !important;
-    backdrop-filter: blur(8px);
+    box-shadow: var(--shadow-sm) !important;
 }
 .streamlit-expanderHeader:hover {
-    border-color: var(--border-gold) !important;
-    color: var(--gold-light) !important;
-    background: linear-gradient(135deg, rgba(201,168,76,0.06), rgba(20,20,35,0.9)) !important;
+    border-color: var(--border-red) !important;
+    color: var(--hem-red) !important;
+    background: var(--hem-red-pale) !important;
 }
 .streamlit-expanderContent {
-    background: rgba(14,14,24,0.6) !important;
-    border: 1px solid var(--border-dark) !important;
+    background: var(--bg-card-warm) !important;
+    border: 1px solid var(--border-light) !important;
     border-top: none !important;
     border-radius: 0 0 var(--r-md) var(--r-md) !important;
     padding: 12px 18px 16px !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADERS (inside tabs)
+   SECTION HEADERS
 ═══════════════════════════════════════════════════════════════════════════ */
 .section-header {
     background: linear-gradient(135deg,
-        rgba(201,168,76,0.12) 0%,
-        rgba(201,168,76,0.04) 100%);
-    border: 1px solid var(--border-gold);
-    border-left: 4px solid var(--gold);
+        var(--hem-red-pale) 0%,
+        rgba(232,135,10,0.05) 70%,
+        var(--hem-red-pale) 100%);
+    border: 1px solid var(--border-red);
+    border-left: 4px solid var(--hem-red);
     border-radius: 0 var(--r-md) var(--r-md) 0;
     padding: 14px 24px;
     margin: 20px 0 16px;
-    font-family: 'Playfair Display', serif;
-    font-size: 20px;
+    font-family: 'Cinzel', serif;
+    font-size: 18px;
     font-weight: 700;
-    color: var(--gold-light);
-    letter-spacing: 0.5px;
+    color: var(--hem-red-deep);
+    letter-spacing: 0.8px;
     display: flex;
     align-items: center;
     gap: 12px;
-    box-shadow: var(--shadow-gold), inset 0 1px 0 rgba(201,168,76,0.1);
+    box-shadow: var(--shadow-sm);
     position: relative;
     overflow: hidden;
 }
@@ -478,21 +511,20 @@ section[data-testid="stSidebar"] .streamlit-expanderHeader:hover {
     content: '';
     position: absolute;
     right: 20px; top: 50%; transform: translateY(-50%);
-    width: 60px; height: 1px;
-    background: linear-gradient(90deg, var(--gold), transparent);
-    opacity: 0.5;
+    width: 50px; height: 1px;
+    background: linear-gradient(90deg, var(--saffron), transparent);
+    opacity: 0.6;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   GLASS CARD component (used via st.markdown)
+   GLASS CARD → Clean white card
 ═══════════════════════════════════════════════════════════════════════════ */
 .glass-card {
-    background: linear-gradient(135deg, rgba(20,20,35,0.9), rgba(14,14,24,0.8));
-    border: 1px solid var(--border-glass);
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
     border-radius: var(--r-xl);
     padding: 24px 28px;
-    backdrop-filter: blur(16px);
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-md);
     margin: 12px 0;
     transition: border-color var(--t-normal), box-shadow var(--t-normal);
     position: relative;
@@ -501,12 +533,18 @@ section[data-testid="stSidebar"] .streamlit-expanderHeader:hover {
 .glass-card::before {
     content: '';
     position: absolute;
-    top: 0; left: 0; right: 0; height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(201,168,76,0.3), transparent);
+    top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg,
+        var(--hem-red),
+        var(--saffron),
+        var(--gold),
+        var(--saffron),
+        var(--hem-red));
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
 }
 .glass-card:hover {
-    border-color: var(--border-gold);
-    box-shadow: var(--shadow-card), var(--shadow-gold);
+    border-color: var(--border-red);
+    box-shadow: var(--shadow-lg);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -516,17 +554,18 @@ section[data-testid="stSidebar"] .streamlit-expanderHeader:hover {
     display: flex;
     gap: 24px;
     align-items: center;
-    background: linear-gradient(135deg, rgba(20,20,35,0.8), rgba(14,14,24,0.6));
-    border: 1px solid var(--border-glass);
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-left: 3px solid var(--saffron);
     border-radius: var(--r-lg);
     padding: 14px 24px;
     margin: 12px 0 18px;
-    backdrop-filter: blur(8px);
+    box-shadow: var(--shadow-sm);
     flex-wrap: wrap;
 }
 .stat-item {
     font-size: 12px;
-    color: var(--text-mid);
+    color: var(--text-muted);
     font-weight: 500;
     letter-spacing: 0.3px;
     text-transform: uppercase;
@@ -534,8 +573,8 @@ section[data-testid="stSidebar"] .streamlit-expanderHeader:hover {
 .stat-value {
     font-size: 18px;
     font-weight: 700;
-    color: var(--gold-light);
-    font-family: 'Playfair Display', serif;
+    color: var(--hem-red);
+    font-family: 'Cinzel', serif;
     display: block;
     line-height: 1.2;
     margin-top: 2px;
@@ -546,13 +585,12 @@ section[data-testid="stSidebar"] .streamlit-expanderHeader:hover {
 ═══════════════════════════════════════════════════════════════════════════ */
 .badge-new {
     display: inline-block;
-    background: linear-gradient(135deg, rgba(231,76,60,0.25), rgba(192,57,43,0.15));
-    color: #ff8070;
+    background: var(--hem-red);
+    color: #ffffff;
     font-size: 9px;
     font-weight: 800;
     padding: 2px 8px;
     border-radius: 10px;
-    border: 1px solid rgba(231,76,60,0.4);
     margin-left: 6px;
     text-transform: uppercase;
     letter-spacing: 0.8px;
@@ -560,33 +598,25 @@ section[data-testid="stSidebar"] .streamlit-expanderHeader:hover {
     vertical-align: middle;
 }
 @keyframes badge-pulse {
-    0%, 100% { opacity: 1; box-shadow: none; }
-    50% { opacity: 0.7; box-shadow: 0 0 6px rgba(231,76,60,0.4); }
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.75; box-shadow: 0 0 8px rgba(200,16,46,0.50); }
 }
+
 .badge-modified {
     display: inline-block;
-    background: linear-gradient(135deg, rgba(241,196,15,0.2), rgba(243,156,18,0.1));
-    color: #f1c40f;
+    background: var(--saffron-pale);
+    color: var(--saffron);
     font-size: 9px; font-weight: 800;
     padding: 2px 8px; border-radius: 10px;
-    border: 1px solid rgba(241,196,15,0.35);
+    border: 1px solid var(--border-saffron);
     margin-left: 6px; text-transform: uppercase; letter-spacing: 0.8px;
     vertical-align: middle;
 }
+
 .badge-custom {
     display: inline-block;
-    background: linear-gradient(135deg, rgba(46,204,113,0.2), rgba(39,174,96,0.1));
-    color: #2ecc71;
-    font-size: 9px; font-weight: 800;
-    padding: 2px 8px; border-radius: 10px;
-    border: 1px solid rgba(46,204,113,0.35);
-    margin-left: 6px; text-transform: uppercase; letter-spacing: 0.8px;
-    vertical-align: middle;
-}
-.badge-in-cart {
-    display: inline-block;
-    background: linear-gradient(135deg, rgba(201,168,76,0.2), rgba(201,168,76,0.08));
-    color: var(--gold-light);
+    background: var(--gold-pale);
+    color: var(--gold-dark);
     font-size: 9px; font-weight: 800;
     padding: 2px 8px; border-radius: 10px;
     border: 1px solid var(--border-gold);
@@ -594,18 +624,28 @@ section[data-testid="stSidebar"] .streamlit-expanderHeader:hover {
     vertical-align: middle;
 }
 
+.badge-in-cart {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--hem-red), var(--hem-red-deep));
+    color: #ffffff;
+    font-size: 9px; font-weight: 800;
+    padding: 2px 8px; border-radius: 10px;
+    margin-left: 6px; text-transform: uppercase; letter-spacing: 0.8px;
+    vertical-align: middle;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
-   SUBCATEGORY HEADER (in product list)
+   SUBCATEGORY HEADER
 ═══════════════════════════════════════════════════════════════════════════ */
 .subcat-header {
-    background: linear-gradient(135deg, rgba(74,158,255,0.1), rgba(74,158,255,0.03));
-    border-left: 3px solid var(--accent-blue);
+    background: var(--saffron-pale);
+    border-left: 3px solid var(--saffron);
     padding: 8px 14px;
     margin: 14px 0 6px;
     border-radius: 0 var(--r-sm) var(--r-sm) 0;
     font-size: 12px;
     font-weight: 700;
-    color: var(--accent-blue);
+    color: var(--saffron);
     letter-spacing: 0.8px;
     text-transform: uppercase;
 }
@@ -615,21 +655,21 @@ section[data-testid="stSidebar"] .streamlit-expanderHeader:hover {
 ═══════════════════════════════════════════════════════════════════════════ */
 .product-thumb {
     border-radius: var(--r-sm);
-    border: 1px solid var(--border-gold);
+    border: 1px solid var(--border-red);
     object-fit: cover;
-    background: var(--bg-card);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    background: var(--bg-cream);
+    box-shadow: var(--shadow-sm);
 }
 .product-thumb-placeholder {
     border-radius: var(--r-sm);
-    border: 1px solid var(--border-glass);
-    background: linear-gradient(135deg, rgba(201,168,76,0.05), rgba(20,20,35,0.8));
+    border: 1px dashed var(--border-medium);
+    background: var(--bg-cream);
     display: flex; align-items: center; justify-content: center;
     font-size: 10px; color: var(--text-muted);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PRODUCT ROW hover effect
+   PRODUCT ROW hover
 ═══════════════════════════════════════════════════════════════════════════ */
 .product-row-hover {
     border-radius: var(--r-sm);
@@ -638,75 +678,76 @@ section[data-testid="stSidebar"] .streamlit-expanderHeader:hover {
     margin: 1px 0;
 }
 .product-row-hover:hover {
-    background: rgba(201,168,76,0.04);
+    background: var(--hem-red-pale);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CONFIRM DIALOG
 ═══════════════════════════════════════════════════════════════════════════ */
 .confirm-dialog {
-    background: linear-gradient(135deg, rgba(241,196,15,0.08), rgba(243,156,18,0.04));
-    border: 1px solid rgba(241,196,15,0.3);
+    background: var(--saffron-pale);
+    border: 1px solid var(--border-saffron);
     border-radius: var(--r-md);
     padding: 16px 20px;
     margin: 8px 0;
-    color: #f1c40f;
+    color: var(--saffron);
     font-size: 14px;
-    backdrop-filter: blur(8px);
 }
 .confirm-dialog-danger {
-    background: linear-gradient(135deg, rgba(231,76,60,0.1), rgba(192,57,43,0.05));
-    border: 1px solid rgba(231,76,60,0.35);
+    background: var(--hem-red-pale);
+    border: 1px solid var(--border-red);
     border-radius: var(--r-md);
     padding: 16px 20px;
     margin: 8px 0;
-    color: #ff8070;
+    color: var(--hem-red-deep);
     font-size: 14px;
-    backdrop-filter: blur(8px);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DATA EDITOR (st.data_editor)
+   DATA EDITOR
 ═══════════════════════════════════════════════════════════════════════════ */
 div[data-testid="stDataEditor"] {
-    border: 1px solid var(--border-glass) !important;
+    border: 1px solid var(--border-light) !important;
     border-radius: var(--r-lg) !important;
     overflow: hidden !important;
-    box-shadow: var(--shadow-card) !important;
-    background: rgba(14,14,24,0.9) !important;
+    box-shadow: var(--shadow-md) !important;
 }
 div[data-testid="stDataEditor"] thead th {
-    background: rgba(201,168,76,0.08) !important;
-    color: var(--gold-light) !important;
+    background: var(--hem-red-pale) !important;
+    color: var(--hem-red-deep) !important;
     font-weight: 700 !important;
     font-size: 11px !important;
     letter-spacing: 0.8px !important;
     text-transform: uppercase !important;
-    border-bottom: 1px solid var(--border-gold) !important;
+    border-bottom: 2px solid var(--border-red) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    METRICS
 ═══════════════════════════════════════════════════════════════════════════ */
 [data-testid="stMetric"] {
-    background: linear-gradient(135deg, rgba(20,20,35,0.9), rgba(14,14,24,0.7));
-    border: 1px solid var(--border-glass);
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
     border-radius: var(--r-lg);
     padding: 18px 22px;
-    box-shadow: var(--shadow-card);
-    transition: border-color var(--t-normal), box-shadow var(--t-normal);
+    box-shadow: var(--shadow-sm);
+    transition: all var(--t-normal);
     position: relative;
     overflow: hidden;
 }
 [data-testid="stMetric"]::before {
     content: '';
     position: absolute;
-    top: 0; left: 0; right: 0; height: 2px;
-    background: linear-gradient(90deg, var(--gold-dark), var(--gold), var(--gold-dark));
+    top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg,
+        var(--hem-red),
+        var(--saffron),
+        var(--gold));
 }
 [data-testid="stMetric"]:hover {
-    border-color: var(--border-gold);
-    box-shadow: var(--shadow-card), var(--shadow-gold);
+    border-color: var(--border-red);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
 }
 [data-testid="stMetricLabel"] {
     color: var(--text-muted) !important;
@@ -716,34 +757,34 @@ div[data-testid="stDataEditor"] thead th {
     letter-spacing: 0.8px !important;
 }
 [data-testid="stMetricValue"] {
-    color: var(--gold-light) !important;
-    font-family: 'Playfair Display', serif !important;
+    color: var(--hem-red) !important;
+    font-family: 'Cinzel', serif !important;
     font-size: 28px !important;
     font-weight: 700 !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   ALERTS / INFO / WARNING / ERROR
+   ALERTS
 ═══════════════════════════════════════════════════════════════════════════ */
-.stAlert {
-    border-radius: var(--r-md) !important;
-    backdrop-filter: blur(8px) !important;
-}
+.stAlert { border-radius: var(--r-md) !important; }
 [data-testid="stAlert"] {
     border-radius: var(--r-md) !important;
-    background: rgba(20,20,35,0.85) !important;
+    background: var(--bg-card) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PROGRESS BAR
+   PROGRESS BAR — HEM Red → Saffron → Gold
 ═══════════════════════════════════════════════════════════════════════════ */
 .stProgress > div > div > div {
-    background: linear-gradient(90deg, var(--gold-dark), var(--gold), var(--gold-light)) !important;
+    background: linear-gradient(90deg,
+        var(--hem-red),
+        var(--saffron),
+        var(--gold)) !important;
     border-radius: 4px !important;
-    box-shadow: 0 0 10px var(--gold-glow) !important;
+    box-shadow: 0 0 8px var(--saffron-glow) !important;
 }
 .stProgress > div > div {
-    background: rgba(255,255,255,0.05) !important;
+    background: var(--border-light) !important;
     border-radius: 4px !important;
 }
 
@@ -751,24 +792,30 @@ div[data-testid="stDataEditor"] thead th {
    FORM
 ═══════════════════════════════════════════════════════════════════════════ */
 .stForm {
-    background: linear-gradient(135deg, rgba(20,20,35,0.9), rgba(14,14,24,0.7)) !important;
-    border: 1px solid var(--border-glass) !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-light) !important;
     border-radius: var(--r-xl) !important;
     padding: 24px !important;
-    backdrop-filter: blur(16px) !important;
-    box-shadow: var(--shadow-card) !important;
+    box-shadow: var(--shadow-md) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CHECKBOXES
 ═══════════════════════════════════════════════════════════════════════════ */
 [data-testid="stCheckbox"] label {
-    color: var(--text-light) !important;
+    color: var(--text-body) !important;
     font-size: 13px !important;
 }
 [data-testid="stCheckbox"] input[type="checkbox"]:checked + div {
-    background: var(--gold) !important;
-    border-color: var(--gold) !important;
+    background: var(--hem-red) !important;
+    border-color: var(--hem-red) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RADIO BUTTONS
+═══════════════════════════════════════════════════════════════════════════ */
+[data-testid="stRadio"] label {
+    color: var(--text-body) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -776,41 +823,40 @@ div[data-testid="stDataEditor"] thead th {
 ═══════════════════════════════════════════════════════════════════════════ */
 hr {
     border: none !important;
-    border-top: 1px solid var(--border-glass) !important;
+    border-top: 1px solid var(--border-light) !important;
     margin: 24px 0 !important;
     position: relative;
 }
 hr::after {
-    content: '◆';
+    content: '🔥';
     position: absolute;
-    left: 50%; transform: translateX(-50%) translateY(-50%);
-    background: var(--bg-dark);
-    padding: 0 12px;
-    color: var(--gold-dark);
-    font-size: 10px;
+    left: 50%; transform: translateX(-50%) translateY(-60%);
+    background: var(--bg-page);
+    padding: 0 10px;
+    font-size: 12px;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SCROLLBAR
+   SCROLLBAR — Subtle red
 ═══════════════════════════════════════════════════════════════════════════ */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--bg-deep); }
+::-webkit-scrollbar-track { background: #f5eeee; }
 ::-webkit-scrollbar-thumb {
-    background: linear-gradient(var(--gold-dark), var(--gold));
+    background: linear-gradient(var(--hem-red-light), var(--saffron));
     border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+::-webkit-scrollbar-thumb:hover { background: var(--hem-red); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   TOAST NOTIFICATION
+   TOAST
 ═══════════════════════════════════════════════════════════════════════════ */
 [data-testid="stToast"] {
-    background: rgba(20,20,35,0.95) !important;
-    border: 1px solid var(--border-gold) !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-red) !important;
+    border-left: 4px solid var(--hem-red) !important;
     border-radius: var(--r-md) !important;
-    color: var(--text-light) !important;
-    backdrop-filter: blur(16px) !important;
-    box-shadow: var(--shadow-dark), var(--shadow-gold) !important;
+    color: var(--text-body) !important;
+    box-shadow: var(--shadow-lg) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -824,30 +870,34 @@ hr::after {
 .empty-state-icon {
     font-size: 56px;
     margin-bottom: 20px;
-    opacity: 0.35;
-    filter: grayscale(0.3);
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   GOLD SEPARATOR (decorative line)
-═══════════════════════════════════════════════════════════════════════════ */
-.gold-divider {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--gold), transparent);
-    margin: 24px 0;
-    border: none;
     opacity: 0.4;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CART GLOW CARD (cart count metric)
+   HEM RED DIVIDER (was gold-divider)
+═══════════════════════════════════════════════════════════════════════════ */
+.gold-divider {
+    height: 2px;
+    background: linear-gradient(90deg,
+        transparent,
+        var(--hem-red),
+        var(--saffron),
+        var(--hem-red),
+        transparent);
+    margin: 24px 0;
+    border: none;
+    opacity: 0.35;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CART BADGE
 ═══════════════════════════════════════════════════════════════════════════ */
 .cart-glow {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--gold), var(--gold-dark));
-    color: #0a0a0f;
+    background: var(--hem-red);
+    color: #ffffff;
     font-size: 11px;
     font-weight: 800;
     min-width: 22px;
@@ -855,7 +905,7 @@ hr::after {
     border-radius: 11px;
     padding: 0 7px;
     margin-left: 8px;
-    box-shadow: 0 0 12px rgba(201,168,76,0.5);
+    box-shadow: 0 2px 8px rgba(200,16,46,0.40);
     letter-spacing: 0.5px;
 }
 
@@ -863,8 +913,8 @@ hr::after {
    RESPONSIVE
 ═══════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
-    .main-title .title-brand { font-size: 26px; letter-spacing: 3px; }
-    .main-title { padding: 22px 20px 18px; }
+    .main-title .title-brand { font-size: 28px; letter-spacing: 4px; }
+    .main-title { padding: 24px 20px 18px; }
     .stats-bar { flex-direction: column; gap: 10px; }
     .section-header { font-size: 16px; padding: 12px 18px; }
 }
