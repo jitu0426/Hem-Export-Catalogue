@@ -29,12 +29,11 @@ def init_cloudinary():
     if not secret:
         logger.warning("CLOUDINARY_API_SECRET not set - cloud features will be limited")
     cloudinary.config(
-        cloud_name=CLOUDINARY_CLOUD_NAME,
-        api_key=CLOUDINARY_API_KEY,
-        api_secret=secret,
-        secure=True,
+        cloud_name = "dnoepbfbr",
+        api_key = "393756212248257",
+        api_secret = "66zA0Je4c0SKqaDcbCglsxPpYGI",
+        secure = True
     )
-
 
 # --- Image Processing ---
 def get_image_as_base64_str(url_or_path, resize=None, max_size=None, retries=2):
